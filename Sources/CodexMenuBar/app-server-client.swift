@@ -53,6 +53,7 @@ final class AppServerClient: @unchecked Sendable {
   private var shouldRun = false
   private var hasConnectedOnce = false
   private var state: AppServerConnectionState = .disconnected
+  private var sessionSocketPathOverride: String?
 
   private var nextRequestId = 1
   private var pendingResponses: [Int: ([String: Any]) -> Void] = [:]
@@ -89,6 +90,12 @@ final class AppServerClient: @unchecked Sendable {
     }
   }
 
+  func UpdateSocketPathOverride(_ value: String?) {
+    workQueue.async { [weak self] in
+      self?.UpdateSocketPathOverrideOnQueue(value)
+    }
+  }
+
   private func StartOnQueue(initialState: AppServerConnectionState) {
     shouldRun = true
     EmitState(initialState)
@@ -111,6 +118,25 @@ final class AppServerClient: @unchecked Sendable {
     if emitState {
       EmitState(.disconnected)
     }
+  }
+
+  private func UpdateSocketPathOverrideOnQueue(_ value: String?) {
+    let normalizedValue = NonEmptyString(value)
+    guard normalizedValue != sessionSocketPathOverride else {
+      return
+    }
+
+    sessionSocketPathOverride = normalizedValue
+    guard shouldRun else {
+      return
+    }
+
+    lastSeq = nil
+    knownEndpointIds.removeAll()
+    summaryKnownEndpointIds.removeAll()
+    DispatchEndpointIds([])
+    DisconnectOnQueue(notify: true)
+    ConnectIfNeededOnQueue()
   }
 
   private func StartReconnectTimerOnQueue() {
@@ -601,20 +627,7 @@ final class AppServerClient: @unchecked Sendable {
   }
 
   private func CodexdSocketPath() -> String {
-    let env = ProcessInfo.processInfo.environment
-    if let override = NonEmptyString(env["CODEXD_SOCKET_PATH"]) {
-      return (override as NSString).expandingTildeInPath
-    }
-
-    let codexHomeOverride = NonEmptyString(env["CODEX_HOME"])
-    let codexHomePath = codexHomeOverride ?? "\(NSHomeDirectory())/.codex"
-    let codexHome = URL(fileURLWithPath: (codexHomePath as NSString).expandingTildeInPath)
-    return
-      codexHome
-      .appendingPathComponent("runtime")
-      .appendingPathComponent("codexd")
-      .appendingPathComponent("codexd.sock")
-      .path
+    CodexdSocketConfiguration.Resolve(sessionOverride: sessionSocketPathOverride).resolvedSocketPath
   }
 
   private func NonEmptyString(_ value: Any?) -> String? {

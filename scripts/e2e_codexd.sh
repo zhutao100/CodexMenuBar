@@ -43,7 +43,7 @@ for raw in open(path, encoding="utf-8"):
   if not line.strip() or line.lstrip().startswith("#"):
     continue
 
-  m = re.match(r"^(\\s*)([A-Za-z0-9_-]+)\\s*:\\s*(.*)$", line)
+  m = re.match(r"^(\s*)([A-Za-z0-9_-]+)\s*:\s*(.*)$", line)
   if not m:
     continue
   indent, key, rest = m.groups()

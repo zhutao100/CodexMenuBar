@@ -6,6 +6,7 @@ import SwiftUI
 final class StatusMenuController: NSObject, NSPopoverDelegate {
   var ReconnectHandler: (() -> Void)?
   var QuickStartHandler: (() -> Void)?
+  var SettingsHandler: (() -> Void)?
   var OpenTerminalHandler: ((String) -> Void)?
   var QuitHandler: (() -> Void)?
   var PopoverVisibilityChanged: ((Bool) -> Void)?
@@ -31,6 +32,10 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
         model: model,
         onReconnectAll: { [weak self] in self?.ReconnectHandler?() },
         onQuickStart: { [weak self] in self?.QuickStartHandler?() },
+        onOpenSettings: { [weak self] in
+          self?.popover.performClose(nil)
+          self?.SettingsHandler?()
+        },
         onOpenTerminal: { [weak self] workingDirectory in
           self?.OpenTerminalHandler?(workingDirectory)
         },
@@ -92,7 +97,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
       _ = model.lowRateLimitWarningText
       _ = model.viewRefreshToken
     } onChange: { [weak self] in
-      DispatchQueue.main.async {
+      Task { @MainActor [weak self] in
         self?.UpdateButton()
         self?.UpdatePopoverSize()
         self?.ObserveModel()
@@ -170,6 +175,7 @@ private struct StatusDropdownView: View {
 
   let onReconnectAll: () -> Void
   let onQuickStart: () -> Void
+  let onOpenSettings: () -> Void
   let onOpenTerminal: (String) -> Void
   let onQuit: () -> Void
 
@@ -267,6 +273,8 @@ private struct StatusDropdownView: View {
 
       HStack(spacing: 8) {
         Button("Reconnect codexd", action: onReconnectAll)
+        Button("Settings", action: onOpenSettings)
+          .accessibilityIdentifier("status.settings")
         Spacer()
         Button("Quit CodexMenuBar", action: onQuit)
       }

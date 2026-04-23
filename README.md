@@ -69,12 +69,15 @@ Socket overrides:
 
 - `CODEXD_SOCKET_PATH` (preferred): connect to that exact socket path (supports `~` expansion).
 - `CODEX_HOME`: connect to `$CODEX_HOME/runtime/codexd/codexd.sock` (supports `~` expansion).
+- The menu bar dropdown now exposes `Settings`, which can apply a session-only socket-path override and reconnect without relaunching the app.
 
 Example:
 
 ```shell
 CODEXD_SOCKET_PATH=/tmp/codexd.sock swift run CodexMenuBar
 ```
+
+The Settings window also includes a macOS 26 visibility note: if the status item is hidden, enable `CodexMenuBar` under `System Settings -> Menu Bar`.
 
 When connected, the app subscribes to:
 

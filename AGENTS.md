@@ -16,6 +16,8 @@ Check whether `config/external-projects.local.yaml` exists and has a valid `exte
 - place this repo inside a `codex` checkout
 - `cp config/external-projects.example.yaml config/external-projects.local.yaml` and point to a `codex` checkout.
 
+The app also exposes a Settings window from the menu bar dropdown. Use it for session-only `codexd` socket overrides and macOS 26 menu-bar-visibility troubleshooting; launch-time env vars (`CODEXD_SOCKET_PATH`, `CODEX_HOME`) still define the default path.
+
 ## Sandboxed tests (macos-sandbox-testing)
 
 Unit tests (SwiftPM and Xcode) are guarded by an in-process Seatbelt sandbox to prevent writes outside the workspace.

@@ -5,9 +5,22 @@ import Foundation
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private let turnStore = TurnStore()
   private lazy var model = MenuBarViewModel(turnStore: turnStore)
+  private let settingsModel = SettingsViewModel()
   private lazy var statusMenu = StatusMenuController(model: model)
   private let appServerClient = AppServerClient()
   private let terminalLauncher = TerminalLauncher()
+  private lazy var settingsWindowController = SettingsWindowController(
+    model: settingsModel,
+    onApplySocketOverride: { [weak self] socketPath in
+      self?.appServerClient.UpdateSocketPathOverride(socketPath)
+    },
+    onReconnect: { [weak self] in
+      self?.appServerClient.Restart()
+    },
+    onQuickStart: { [weak self] in
+      self?.terminalLauncher.LaunchQuickStart()
+    }
+  )
 
   private var timer: Timer?
 
@@ -32,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     statusMenu.QuickStartHandler = { [weak self] in
       self?.terminalLauncher.LaunchQuickStart()
+    }
+    statusMenu.SettingsHandler = { [weak self] in
+      self?.ShowSettingsWindow()
     }
     statusMenu.OpenTerminalHandler = { [weak self] workingDirectory in
       self?.terminalLauncher.OpenTerminal(at: workingDirectory)
@@ -60,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return
       }
       self.model.connectionState = state
+      self.settingsModel.connectionState = state
       self.model.InvalidateView()
     }
 
@@ -77,6 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
       self.HandleNotification(method: method, params: params)
     }
+  }
+
+  private func ShowSettingsWindow() {
+    settingsWindowController.Show()
   }
 
   private func StartTimer() {

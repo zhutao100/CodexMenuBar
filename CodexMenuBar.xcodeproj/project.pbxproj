@@ -17,9 +17,12 @@
 		6BD69309045BB6DC49DFB8C9 /* SandboxTestingBootstrap.c in Sources */ = {isa = PBXBuildFile; fileRef = 59D3A0D90750792399D48A4E /* SandboxTestingBootstrap.c */; };
 		860BAE53672CCFF76D8DDA7C /* menu-bar-view-model.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCCA46335FC47E30B60DBE37 /* menu-bar-view-model.swift */; };
 		864AF98C98159EFDB75E3B3C /* models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886DBAB2B96CBB285D141779 /* models.swift */; };
+		90EB39AD9EBFF1A243C72036 /* codexd-socket-configuration-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */; };
 		A033B68B6C072BC23F8E30E0 /* turn-menu-row-view.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3B2FA3C3246D682E69EDA5 /* turn-menu-row-view.swift */; };
 		AC30CDEE24AA447CF14489E6 /* app-delegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906DBD9B8AA0C207421AE097 /* app-delegate.swift */; };
+		B3B64FC1FC8FFE9508084379 /* codexd-socket-configuration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F9E96E6834EFE102E5F452 /* codexd-socket-configuration.swift */; };
 		BF2D9BA8FE5B433D2FA70330 /* turn-store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78CA2874DC40F8B93A9EB459 /* turn-store.swift */; };
+		C7796AEA5CC4B25A10CFE929 /* settings-window-controller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682B286B26D4990EF76A1D90 /* settings-window-controller.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,7 +39,9 @@
 		1F5C3C76FDE4BE37009A342F /* turn-store-history-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-store-history-tests.swift"; sourceTree = "<group>"; };
 		44FEEFD4C844D846E248FD89 /* CodexMenuBarMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexMenuBarMain.swift; sourceTree = "<group>"; };
 		52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "terminal-launcher-tests.swift"; sourceTree = "<group>"; };
+		552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "codexd-socket-configuration-tests.swift"; sourceTree = "<group>"; };
 		59D3A0D90750792399D48A4E /* SandboxTestingBootstrap.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = SandboxTestingBootstrap.c; sourceTree = "<group>"; };
+		682B286B26D4990EF76A1D90 /* settings-window-controller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "settings-window-controller.swift"; sourceTree = "<group>"; };
 		78CA2874DC40F8B93A9EB459 /* turn-store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-store.swift"; sourceTree = "<group>"; };
 		7F4A2CFF39DC859A0326A22C /* status-menu-controller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "status-menu-controller.swift"; sourceTree = "<group>"; };
 		8673845FF8A7B929AE3B48EF /* CodexMenuBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CodexMenuBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -44,6 +49,7 @@
 		88F49D17DC71FDCE9C3E8A3E /* app-server-client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "app-server-client.swift"; sourceTree = "<group>"; };
 		906DBD9B8AA0C207421AE097 /* app-delegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "app-delegate.swift"; sourceTree = "<group>"; };
 		9907DD2492503B856D3F71BC /* menu-bar-view-model-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "menu-bar-view-model-tests.swift"; sourceTree = "<group>"; };
+		A8F9E96E6834EFE102E5F452 /* codexd-socket-configuration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "codexd-socket-configuration.swift"; sourceTree = "<group>"; };
 		BD3B2FA3C3246D682E69EDA5 /* turn-menu-row-view.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-menu-row-view.swift"; sourceTree = "<group>"; };
 		C4BF3E9E20F45FD084B8F762 /* CodexMenuBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodexMenuBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D13E0ACEDDE5320AD61E859E /* terminal-launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "terminal-launcher.swift"; sourceTree = "<group>"; };
@@ -54,6 +60,7 @@
 		092A45A5132C7FEC9902AEB4 /* CodexMenuBarTests */ = {
 			isa = PBXGroup;
 			children = (
+				552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */,
 				9907DD2492503B856D3F71BC /* menu-bar-view-model-tests.swift */,
 				52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */,
 				1F5C3C76FDE4BE37009A342F /* turn-store-history-tests.swift */,
@@ -85,9 +92,11 @@
 			children = (
 				906DBD9B8AA0C207421AE097 /* app-delegate.swift */,
 				88F49D17DC71FDCE9C3E8A3E /* app-server-client.swift */,
+				A8F9E96E6834EFE102E5F452 /* codexd-socket-configuration.swift */,
 				44FEEFD4C844D846E248FD89 /* CodexMenuBarMain.swift */,
 				DCCA46335FC47E30B60DBE37 /* menu-bar-view-model.swift */,
 				886DBAB2B96CBB285D141779 /* models.swift */,
+				682B286B26D4990EF76A1D90 /* settings-window-controller.swift */,
 				7F4A2CFF39DC859A0326A22C /* status-menu-controller.swift */,
 				D13E0ACEDDE5320AD61E859E /* terminal-launcher.swift */,
 				BD3B2FA3C3246D682E69EDA5 /* turn-menu-row-view.swift */,
@@ -184,8 +193,10 @@
 				15828B42C1630948005B329A /* CodexMenuBarMain.swift in Sources */,
 				AC30CDEE24AA447CF14489E6 /* app-delegate.swift in Sources */,
 				4BB21C36E043516EBA4D9806 /* app-server-client.swift in Sources */,
+				B3B64FC1FC8FFE9508084379 /* codexd-socket-configuration.swift in Sources */,
 				860BAE53672CCFF76D8DDA7C /* menu-bar-view-model.swift in Sources */,
 				864AF98C98159EFDB75E3B3C /* models.swift in Sources */,
+				C7796AEA5CC4B25A10CFE929 /* settings-window-controller.swift in Sources */,
 				5055F2D6EBB87BAF6D04D856 /* status-menu-controller.swift in Sources */,
 				3BCFCD721F07647B18000194 /* terminal-launcher.swift in Sources */,
 				A033B68B6C072BC23F8E30E0 /* turn-menu-row-view.swift in Sources */,
@@ -198,6 +209,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6BD69309045BB6DC49DFB8C9 /* SandboxTestingBootstrap.c in Sources */,
+				90EB39AD9EBFF1A243C72036 /* codexd-socket-configuration-tests.swift in Sources */,
 				5E5FAF31C17D8820D39CEB67 /* menu-bar-view-model-tests.swift in Sources */,
 				0B7FAAE9CE795148E197BF17 /* terminal-launcher-tests.swift in Sources */,
 				4BB58697DC074F70B2884432 /* turn-store-history-tests.swift in Sources */,
