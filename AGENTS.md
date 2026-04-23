@@ -1,13 +1,14 @@
-# CodexMenuBar (SwiftPM)
+# CodexMenuBar (XcodeGen + SwiftPM)
 
 ## Quick commands
 
+- Generate Xcode project: `./scripts/generate_xcodeproj.sh`
 - Build: `./scripts/build.sh`
-- Test (sandboxed): `swift test`
-- Run: `swift run CodexMenuBar`
-- Fast verify (logs to `.artifacts/`): `scripts/verify_fast.sh`
-- Evidence run (xcresult): `scripts/ui/ui_loop.sh --scheme CodexMenuBar --destination 'platform=macOS'`
-- E2E codexd smoke (artifacts): `scripts/e2e_codexd.sh`
+- Verify (sandboxed, auto Xcode/SwiftPM): `./scripts/verify_fast.sh`
+- Run (Xcode): `open CodexMenuBar.xcodeproj`
+- Run (SwiftPM): `swift run CodexMenuBar`
+- Evidence run (xcresult): `./scripts/ui/ui_loop.sh --scheme CodexMenuBar --destination 'platform=macOS'`
+- E2E codexd smoke (artifacts): `./scripts/e2e_codexd.sh`
 
 ## Configuration
 
@@ -17,10 +18,10 @@ Check whether `config/external-projects.local.yaml` exists and has a valid `exte
 
 ## Sandboxed tests (macos-sandbox-testing)
 
-`swift test` is guarded by an in-process Seatbelt sandbox to prevent writes outside the workspace.
+Unit tests (SwiftPM and Xcode) are guarded by an in-process Seatbelt sandbox to prevent writes outside the workspace.
 
-- Disable (escape hatch): `SEATBELT_SANDBOX_DISABLE=1 swift test`
-- Logs: `CodexMenuBar/.build/macos-sandbox-testing/<run-id>/logs/events.jsonl`
+- Disable (escape hatch): `SEATBELT_SANDBOX_DISABLE=1 ./scripts/verify_fast.sh`
+- Logs: `.build/macos-sandbox-testing/<run-id>/logs/events.jsonl`
 
 ## Formatting + hooks (prek)
 

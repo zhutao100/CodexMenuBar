@@ -146,7 +146,11 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
   }
 
   private static func LoadStatusIcon() -> NSImage? {
-    let bundle = Bundle.module
+    #if SWIFT_PACKAGE
+      let bundle = Bundle.module
+    #else
+      let bundle = Bundle.main
+    #endif
     let iconUrls = [
       bundle.url(forResource: "codex-app", withExtension: "svg"),
       bundle.url(forResource: "codex-app", withExtension: "svg", subdirectory: "svgs"),

@@ -19,12 +19,69 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEX_REPO_ROOT=""
 CONFIG_YAML="${ROOT}/config/external-projects.local.yaml"
 if [[ -f "${CONFIG_YAML}" ]]; then
-  # Extract the `local_path` under the `codex` section. This uses sed to limit
-  # to the codex subsection and then pulls the local_path value, trimming
-  # optional surrounding quotes.
-  VAL=$(sed -n '/^[[:space:]]*codex:/,/^[[:space:]]*[a-zA-Z0-9_\-]\+:/p' "${CONFIG_YAML}" \
-    | sed -n 's/^[[:space:]]*local_path:[[:space:]]*"\?\(.*\)"\?$/\1/p' | tr -d '\r') || VAL=""
+  # Extract the `external_projects.codex.local_path` value. Avoid non-stdlib YAML
+  # deps; implement a minimal indentation-aware parser for this one value.
+  VAL="$(python3 - "${CONFIG_YAML}" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+
+def strip_quotes(s: str) -> str:
+  s = s.strip()
+  if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+    return s[1:-1]
+  return s
+
+external = False
+codex = False
+external_indent = -1
+codex_indent = -1
+
+for raw in open(path, encoding="utf-8"):
+  line = raw.rstrip("\n").rstrip("\r")
+  if not line.strip() or line.lstrip().startswith("#"):
+    continue
+
+  m = re.match(r"^(\\s*)([A-Za-z0-9_-]+)\\s*:\\s*(.*)$", line)
+  if not m:
+    continue
+  indent, key, rest = m.groups()
+  indent_len = len(indent)
+  rest = rest.strip()
+
+  if not external:
+    if key == "external_projects" and rest == "":
+      external = True
+      external_indent = indent_len
+    continue
+
+  if indent_len <= external_indent:
+    external = False
+    codex = False
+    continue
+
+  if not codex:
+    if key == "codex" and rest == "":
+      codex = True
+      codex_indent = indent_len
+    continue
+
+  if indent_len <= codex_indent:
+    codex = False
+    continue
+
+  if key == "local_path":
+    print(strip_quotes(rest))
+    sys.exit(0)
+
+print("")
+PY
+)" || VAL=""
   if [[ -n "${VAL}" ]]; then
+    if [[ "${VAL}" == "~"* ]]; then
+      VAL="${VAL/#\~/$HOME}"
+    fi
     CODEX_REPO_ROOT="${VAL}"
   else
     echo "[e2e_codexd] WARNING: ${CONFIG_YAML} present but external_projects.codex.local_path not found; falling back." >&2
@@ -33,6 +90,12 @@ if [[ -f "${CONFIG_YAML}" ]]; then
 else
   echo "[e2e_codexd] WARNING: ${CONFIG_YAML} not found; falling back to repo parent." >&2
   CODEX_REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
+fi
+
+if [[ ! -d "${CODEX_REPO_ROOT}/codex-rs" ]]; then
+  echo "[e2e_codexd] ERROR: codex-rs not found under CODEX_REPO_ROOT=${CODEX_REPO_ROOT}" >&2
+  echo "[e2e_codexd] HINT: set external_projects.codex.local_path in config/external-projects.local.yaml" >&2
+  exit 2
 fi
 
 RUN_ID="$(date -u +"%Y%m%dT%H%M%SZ")"

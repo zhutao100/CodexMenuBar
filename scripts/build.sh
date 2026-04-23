@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 usage() {
   cat <<'USAGE'
-Release-build wrapper for building the Swift package via xcodebuild.
+Release-build wrapper for building via xcodebuild.
 
 Usage:
   scripts/build.sh [xcodebuild args...]
@@ -27,7 +27,7 @@ Environment:
   SCHEMES                        Space-separated list of schemes to build (defaults to all discovered schemes; skips "*-Package" only when other schemes exist)
   XCODE_PROJECT                  Path to the .xcodeproj to use (optional; auto-detected when unambiguous)
   XCODE_WORKSPACE                Path to the .xcworkspace to use (optional; auto-detected when unambiguous; takes precedence over XCODE_PROJECT)
-  LOG_DIR                        Directory to write xcodebuild logs into (default: artifacts/logs)
+  LOG_DIR                        Directory to write xcodebuild logs into (default: .artifacts/logs)
   VERBOSE                        Set to 1 to stream xcodebuild output (default: low-noise + logs only)
   SKIP_METAL_TOOLCHAIN_DOWNLOAD Set to 1 to disable auto-download attempts
   SKIP_XCODE_PLUGIN_FINGERPRINT_BYPASS Set to 1 to avoid writing the Xcode defaults used for non-interactive package plugin builds

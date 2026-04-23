@@ -22,6 +22,16 @@ It connects to a single local `codexd` daemon, and renders authoritative active 
 ./scripts/build.sh
 ```
 
+## Xcode project
+
+This repo includes a generated Xcode project (`CodexMenuBar.xcodeproj`) driven by `project.yml`.
+
+If you edit `project.yml`, regenerate with:
+
+```shell
+./scripts/generate_xcodeproj.sh
+```
+
 ## Run
 
 ### Start `codexd`
@@ -44,7 +54,12 @@ codex app-server codexd run
 ### Start the menu bar app
 
 ```shell
-cd CodexMenuBar
+open CodexMenuBar.xcodeproj
+```
+
+Or (SwiftPM):
+
+```shell
 swift run CodexMenuBar
 ```
 
@@ -78,13 +93,13 @@ If the menu bar disconnects, it reconnects and re-fetches snapshot state before 
 
 ## Verify
 
-- SwiftPM build + unit tests (low-noise logs): `scripts/verify_fast.sh`
+- Xcode build + unit tests (low-noise logs): `scripts/verify_fast.sh`
 - Evidence run (`.xcresult`): `scripts/ui/ui_loop.sh --scheme CodexMenuBar --destination 'platform=macOS'`
 - `codexd` end-to-end smoke: `scripts/e2e_codexd.sh`
 
 Notes:
 
-- `swift test` is guarded by an in-process Seatbelt sandbox; set `SEATBELT_SANDBOX_DISABLE=1` to bypass.
+- Unit tests are guarded by an in-process Seatbelt sandbox; set `SEATBELT_SANDBOX_DISABLE=1` to bypass.
 - For `scripts/ui/ui_loop.sh`, set `VERBOSE=1` to stream full `xcodebuild` output.
 
 ## Configuration

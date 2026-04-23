@@ -3,12 +3,17 @@ set -euo pipefail
 
 # Tier 0: mandatory fast verifier after every edit.
 #
-# Supports two modes:
-# - SwiftPM mode (default): uses `swift build` / `swift test`.
-#   - If invoked within a SwiftPM package, verifies that package (searches upward for `Package.swift`).
-#   - If invoked outside this repo, verifies the repo root package.
-#   - Override selection by setting `SWIFTPM_PACKAGE_DIR` (relative to repo root, or absolute).
-# - Xcode mode: if PROJECT_OR_WORKSPACE points to an existing .xcodeproj/.xcworkspace
+# Supports two build/test modes:
+# - Xcode mode (default when an .xcodeproj/.xcworkspace exists at repo root): uses `xcodebuild`.
+# - SwiftPM mode: uses `swift build` / `swift test`.
+#
+# Mode selection:
+#   VERIFY_FAST_MODE=auto|xcode|swiftpm (default: auto)
+#   PROJECT_OR_WORKSPACE=<path>   (optional override in xcode/auto mode)
+#   SCHEME=<name>                 (optional; defaults to the container basename)
+#   VERIFY_FAST_XCODE_SEARCH_DEPTH=<int> (optional; max find depth for Xcode container lookup, defaults to 4)
+#   XCODE_CODE_SIGNING_ALLOWED=YES|NO (optional; default: NO for local verification)
+#   RUN_TESTS=0|1                 (optional; defaults to 1)
 #
 # Artifacts (repo root, ignored):
 #   .artifacts/verify-fast/logs/build.log
@@ -33,12 +38,14 @@ LOG_DIR="${ARTIFACTS_DIR}/logs"
 
 mkdir -p "${LOG_DIR}"
 
+VERIFY_FAST_MODE="${VERIFY_FAST_MODE:-auto}"
 PROJECT_OR_WORKSPACE="${PROJECT_OR_WORKSPACE:-}"
 SCHEME="${SCHEME:-}"
 DESTINATION="${DESTINATION:-platform=macOS}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 VERBOSE="${VERBOSE:-0}"
 SWIFTPM_PACKAGE_DIR="${SWIFTPM_PACKAGE_DIR:-}"
+XCODE_CODE_SIGNING_ALLOWED="${XCODE_CODE_SIGNING_ALLOWED:-NO}"
 RUN_TESTS="${RUN_TESTS:-1}"
 
 BUILD_LOG="${LOG_DIR}/build.log"
@@ -120,12 +127,101 @@ require_swift_6() {
 
 require_swift_6
 
-if [[ -n "${PROJECT_OR_WORKSPACE}" && -e "${PROJECT_OR_WORKSPACE}" ]]; then
+case "${VERIFY_FAST_MODE}" in
+  auto|xcode|swiftpm) ;;
+  *)
+    echo "error: VERIFY_FAST_MODE must be auto, xcode, or swiftpm (got: ${VERIFY_FAST_MODE})" >&2
+    exit 2
+    ;;
+esac
+
+discover_xcode_container() {
+  local workspaces=()
+  local projects=()
+  local path=""
+  local max_depth="${VERIFY_FAST_XCODE_SEARCH_DEPTH:-4}"
+
+  if ! [[ "${max_depth}" =~ ^[0-9]+$ ]] || ((max_depth < 1)); then
+    max_depth=4
+  fi
+
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    workspaces+=("$path")
+  done < <(
+    # Ignore Xcode-generated internal workspaces inside `.xcodeproj` bundles.
+    find . \
+      -maxdepth "${max_depth}" \
+      -type d \
+      -name '*.xcworkspace' \
+      ! -path '*/.build/*' \
+      ! -path '*/.artifacts/*' \
+      ! -path '*/.swiftpm/*' \
+      ! -path '*.xcodeproj/*' \
+      -print \
+    | LC_ALL=C sort
+  )
+
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    projects+=("$path")
+  done < <(
+    find . \
+      -maxdepth "${max_depth}" \
+      -type d \
+      -name '*.xcodeproj' \
+      ! -path '*/.build/*' \
+      ! -path '*/.artifacts/*' \
+      ! -path '*/.swiftpm/*' \
+      -print \
+    | LC_ALL=C sort
+  )
+
+  if [[ ${#workspaces[@]} -gt 1 ]]; then
+    echo $'error: Multiple .xcworkspace entries found. Set PROJECT_OR_WORKSPACE to choose one:\n'"${workspaces[*]}" >&2
+    exit 2
+  fi
+  if [[ ${#workspaces[@]} -eq 1 ]]; then
+    printf '%s' "${workspaces[0]}"
+    return 0
+  fi
+
+  if [[ ${#projects[@]} -gt 1 ]]; then
+    echo $'error: Multiple .xcodeproj entries found. Set PROJECT_OR_WORKSPACE to choose one:\n'"${projects[*]}" >&2
+    exit 2
+  fi
+  if [[ ${#projects[@]} -eq 1 ]]; then
+    printf '%s' "${projects[0]}"
+    return 0
+  fi
+
+  return 1
+}
+
+if [[ "${VERIFY_FAST_MODE}" != "swiftpm" ]]; then
+  if [[ -n "${PROJECT_OR_WORKSPACE}" && ! -e "${PROJECT_OR_WORKSPACE}" ]]; then
+    echo "error: PROJECT_OR_WORKSPACE not found: ${PROJECT_OR_WORKSPACE}" >&2
+    exit 2
+  fi
+
+  if [[ -z "${PROJECT_OR_WORKSPACE}" ]]; then
+    PROJECT_OR_WORKSPACE="$(discover_xcode_container || true)"
+  fi
+
+  if [[ "${VERIFY_FAST_MODE}" == "xcode" && -z "${PROJECT_OR_WORKSPACE}" ]]; then
+    echo "error: VERIFY_FAST_MODE=xcode but no .xcodeproj/.xcworkspace found in repo (or via PROJECT_OR_WORKSPACE)." >&2
+    exit 2
+  fi
+fi
+
+if [[ -n "${PROJECT_OR_WORKSPACE}" && "${VERIFY_FAST_MODE}" != "swiftpm" ]]; then
   # Xcode mode
   echo "[verify_fast] Xcode mode: ${PROJECT_OR_WORKSPACE}"
+
   if [[ -z "${SCHEME}" ]]; then
-    echo "SCHEME must be set in Xcode mode (e.g., export SCHEME=ZImageCLI)" >&2
-    exit 2
+    SCHEME="$(basename "${PROJECT_OR_WORKSPACE}")"
+    SCHEME="${SCHEME%.xcworkspace}"
+    SCHEME="${SCHEME%.xcodeproj}"
   fi
 
   local_build_args=()
@@ -133,6 +229,12 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && -e "${PROJECT_OR_WORKSPACE}" ]]; then
     local_build_args+=( -workspace "${PROJECT_OR_WORKSPACE}" )
   else
     local_build_args+=( -project "${PROJECT_OR_WORKSPACE}" )
+  fi
+
+  DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${ARTIFACTS_DIR}/DerivedData}"
+
+  if [[ -z "${SEATBELT_SANDBOX_WORKSPACE_ROOT:-}" ]]; then
+    export SEATBELT_SANDBOX_WORKSPACE_ROOT="${ROOT}"
   fi
 
   echo "[verify_fast] Building (log: ${BUILD_LOG})..."
@@ -143,6 +245,8 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && -e "${PROJECT_OR_WORKSPACE}" ]]; then
       -scheme "${SCHEME}" \
       -configuration "${CONFIGURATION}" \
       -destination "${DESTINATION}" \
+      CODE_SIGNING_ALLOWED="${XCODE_CODE_SIGNING_ALLOWED}" \
+      -derivedDataPath "${DERIVED_DATA_PATH}" \
       build; then
     echo "[verify_fast] Build failed (log: ${BUILD_LOG})." >&2
     if [[ "${VERBOSE}" != "1" ]]; then
@@ -155,13 +259,16 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && -e "${PROJECT_OR_WORKSPACE}" ]]; then
   if [[ "${RUN_TESTS}" == "1" ]]; then
     echo "[verify_fast] Testing (log: ${TEST_LOG})..."
     append_log_header "${TEST_LOG}" "xcodebuild test (${PROJECT_OR_WORKSPACE} :: ${SCHEME})"
+    rm -rf "${ARTIFACTS_DIR}/TestResults.xcresult"
     if ! run_logged "${TEST_LOG}" \
       xcodebuild \
         "${local_build_args[@]}" \
         -scheme "${SCHEME}" \
-      -configuration "${CONFIGURATION}" \
-      -destination "${DESTINATION}" \
-      test \
+        -configuration "${CONFIGURATION}" \
+        -destination "${DESTINATION}" \
+        CODE_SIGNING_ALLOWED="${XCODE_CODE_SIGNING_ALLOWED}" \
+        -derivedDataPath "${DERIVED_DATA_PATH}" \
+        test \
       -resultBundlePath "${ARTIFACTS_DIR}/TestResults.xcresult"; then
       echo "[verify_fast] Tests failed (log: ${TEST_LOG})." >&2
       if [[ "${VERBOSE}" != "1" ]]; then
@@ -175,6 +282,7 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && -e "${PROJECT_OR_WORKSPACE}" ]]; then
   exit 0
 fi
 
+# SwiftPM mode
 # SwiftPM argument forwarding:
 # - Forward all script args to `swift test`.
 # - Forward a small, safe subset to `swift build` so `--skip-build` runs match the build configuration.

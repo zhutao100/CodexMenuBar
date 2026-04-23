@@ -118,6 +118,53 @@ if [[ -z "$SCHEME" ]]; then
   exit 2
 fi
 
+discover_xcode_container() {
+  local root="$1"
+  local workspaces=()
+  local projects=()
+  local path=""
+
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    workspaces+=("$path")
+  done < <(find "$root" -maxdepth 1 -type d -name '*.xcworkspace' -print | LC_ALL=C sort)
+
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    projects+=("$path")
+  done < <(find "$root" -maxdepth 1 -type d -name '*.xcodeproj' -print | LC_ALL=C sort)
+
+  if [[ ${#workspaces[@]} -gt 1 ]]; then
+    echo $'Multiple .xcworkspace entries found. Pass --workspace to choose one:\n'"${workspaces[*]}" >&2
+    exit 2
+  fi
+  if [[ ${#workspaces[@]} -eq 1 ]]; then
+    printf '%s' "${workspaces[0]}"
+    return 0
+  fi
+
+  if [[ ${#projects[@]} -gt 1 ]]; then
+    echo $'Multiple .xcodeproj entries found. Pass --project to choose one:\n'"${projects[*]}" >&2
+    exit 2
+  fi
+  if [[ ${#projects[@]} -eq 1 ]]; then
+    printf '%s' "${projects[0]}"
+    return 0
+  fi
+
+  return 1
+}
+
+if [[ -z "$XCTESTRUN" && -z "$WORKSPACE" && -z "$PROJECT" ]]; then
+  if container="$(discover_xcode_container "$PACKAGE_ROOT")"; then
+    case "$container" in
+      *.xcworkspace) WORKSPACE="$container" ;;
+      *.xcodeproj) PROJECT="$container" ;;
+      *) ;;
+    esac
+  fi
+fi
+
 if [[ -n "$XCTESTRUN" ]]; then
   if [[ -n "$WORKSPACE" || -n "$PROJECT" ]]; then
     echo "--xctestrun cannot be used with --workspace/--project (xcodebuild restriction)" >&2
@@ -142,6 +189,10 @@ fi
 
 RUN_DIR="$ARTIFACTS_DIR/$RUN_ID"
 mkdir -p "$RUN_DIR"
+
+if [[ -z "${SEATBELT_SANDBOX_WORKSPACE_ROOT:-}" ]]; then
+  export SEATBELT_SANDBOX_WORKSPACE_ROOT="$(cd "$PACKAGE_ROOT" && pwd -P)"
+fi
 
 RESULT_BUNDLE="$RUN_DIR/results.xcresult"
 SUMMARY_JSON="$RUN_DIR/summary.json"
