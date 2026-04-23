@@ -1,3 +1,5 @@
 .build/
 .artifacts/
 .swiftpm/
+
+config/external-projects.local.yaml

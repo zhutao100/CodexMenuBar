@@ -1,0 +1,7 @@
+# Copy to: config/external-projects.local.yaml (gitignored)
+# Fill local paths for external repos.
+
+external_projects:
+  codex:
+    local_path: "$HOME/path/to/codex"
+    note: "Customzized Codex CLI (https://github.com/zhutao100/codex/)"
