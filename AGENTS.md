@@ -19,6 +19,8 @@ Check whether `config/external-projects.local.yaml` exists and has a valid `exte
 
 The app also exposes a Settings window from the menu bar dropdown. Use it for session-only `codexd` socket overrides and macOS 26 menu-bar-visibility troubleshooting; launch-time env vars (`CODEXD_SOCKET_PATH`, `CODEX_HOME`) still define the default path.
 
+UI tests use launch harnesses (`--start-screen Settings`, `--open-status-surface popover|context-menu`, `--fixture active-turn`). If macOS blocks XCUITest with an "XCTest is trying to Enable UI Automation" password prompt, preserve the `.xcresult`; manual screenshots are only fallback evidence until the OS permission is granted.
+
 ## Sandboxed tests (macos-sandbox-testing)
 
 Unit tests (SwiftPM and Xcode) are guarded by an in-process Seatbelt sandbox to prevent writes outside the workspace.

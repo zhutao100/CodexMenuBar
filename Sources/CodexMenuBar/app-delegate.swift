@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if !IsUITestMode() {
       appServerClient.Start()
     }
+    ApplyUITestFixtureIfRequested()
     if ShouldLaunchIntoSettings() {
       ShowSettingsWindow()
     }
@@ -129,6 +130,127 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     DispatchQueue.main.async { [weak self] in
       self?.statusMenu.PresentUITestSurface(surface)
     }
+  }
+
+  private func ApplyUITestFixtureIfRequested() {
+    guard IsUITestMode(),
+      ArgumentValue(after: "--fixture")?.caseInsensitiveCompare("active-turn") == .orderedSame
+    else {
+      return
+    }
+
+    let endpointId = "fixture-endpoint"
+    let threadId = "fixture-thread"
+    let turnId = "fixture-turn"
+    let now = Date()
+    let startedAt = now.addingTimeInterval(-96)
+    let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
+
+    settingsModel.connectionState = .connected
+    model.connectionState = .connected
+    model.SetEndpointIds([endpointId])
+    turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
+    turnStore.ApplyThreadSnapshot(
+      endpointId: endpointId,
+      thread: [
+        "id": threadId,
+        "title": "Menu bar polish",
+        "cwd": cwd,
+        "turns": [
+          [
+            "id": turnId,
+            "model": "gpt-5-codex",
+            "modelProvider": "OpenAI",
+            "thinkingLevel": "medium",
+            "items": [
+              [
+                "type": "user_message",
+                "content":
+                  "Polish the active turn menu bar panel and make the settings window compact.",
+              ]
+            ],
+          ]
+        ],
+      ],
+      at: now
+    )
+    turnStore.UpsertTurnStarted(
+      endpointId: endpointId, threadId: threadId, turnId: turnId, at: startedAt)
+    turnStore.RecordProgress(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      category: .reasoning,
+      state: .started,
+      label: "Planning UI polish",
+      at: startedAt.addingTimeInterval(8)
+    )
+    turnStore.RecordProgress(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      category: .tool,
+      state: .started,
+      label: "Running verification loop",
+      at: startedAt.addingTimeInterval(34)
+    )
+    turnStore.RecordCommand(
+      endpointId: endpointId,
+      turnId: turnId,
+      command: CommandSummary(
+        command: "./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination platform=macOS",
+        status: .inProgress,
+        exitCode: nil,
+        durationMs: nil
+      )
+    )
+    turnStore.RecordFileChange(
+      endpointId: endpointId,
+      turnId: turnId,
+      change: FileChangeSummary(
+        path: "Sources/CodexMenuBar/status-menu-controller.swift", kind: .update)
+    )
+    turnStore.RecordFileChange(
+      endpointId: endpointId,
+      turnId: turnId,
+      change: FileChangeSummary(
+        path: "Sources/CodexMenuBar/settings-window-controller.swift", kind: .update)
+    )
+    turnStore.UpdatePlan(
+      endpointId: endpointId,
+      turnId: turnId,
+      steps: [
+        PlanStepInfo(description: "Audit current AppKit status item shell", status: .completed),
+        PlanStepInfo(description: "Stabilize popover sizing and active rows", status: .inProgress),
+        PlanStepInfo(description: "Verify screenshots and accessibility", status: .pending),
+      ],
+      explanation: "Fixture state for deterministic menu bar UI verification."
+    )
+    turnStore.UpdateGitInfo(
+      endpointId: endpointId, gitInfo: GitInfo(branch: "main", sha: "fixture"))
+    turnStore.UpdateTokenUsage(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      tokenUsageTotal: TokenUsageInfo(
+        inputTokens: 42_000,
+        cachedInputTokens: 18_000,
+        outputTokens: 8_400,
+        reasoningTokens: 3_200,
+        totalTokens: 53_600,
+        contextWindow: 128_000
+      ),
+      tokenUsageLast: TokenUsageInfo(
+        inputTokens: 12_800,
+        cachedInputTokens: 6_400,
+        outputTokens: 2_100,
+        reasoningTokens: 900,
+        totalTokens: 15_800,
+        contextWindow: 128_000
+      )
+    )
+    model.SyncSectionDisclosureState()
+    model.InvalidateView()
   }
 
   private func ArgumentValue(after option: String) -> String? {

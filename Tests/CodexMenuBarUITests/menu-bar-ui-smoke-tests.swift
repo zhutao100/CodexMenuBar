@@ -20,6 +20,20 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     settingsButton.click()
     XCTAssertTrue(SettingsWindow(in: app).waitForExistence(timeout: 5))
+    AttachScreenshot(named: "settings-opened-from-status-popover", app: app)
+  }
+
+  func testActiveStatusPopoverFixtureShowsStableActiveTurnPanel() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    let header = app.staticTexts["status.headerTitle"]
+    XCTAssertTrue(header.waitForExistence(timeout: 5))
+    XCTAssertEqual(header.label, "Codex - 1 active")
+    XCTAssertTrue(app.buttons["turn.toggle.fixture-endpoint"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["status.settings"].exists)
+    AttachScreenshot(named: "active-status-popover", app: app)
   }
 
   func testStatusContextMenuLaunchHarnessShowsMenuItems() throws {
@@ -52,6 +66,18 @@ final class MenuBarUISmokeTests: XCTestCase {
     let effectivePath = settingsWindow.staticTexts["settings.effectiveSocketPath"]
     XCTAssertTrue(effectivePath.waitForExistence(timeout: 5))
     XCTAssertTrue(WaitForStringValue(of: effectivePath, equals: "/tmp/codex-ui-test.sock"))
+  }
+
+  func testSettingsWindowStartsCompactAndBounded() throws {
+    let app = LaunchApp(startScreen: "Settings")
+    let settingsWindow = SettingsWindow(in: app)
+    XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+
+    XCTAssertGreaterThanOrEqual(settingsWindow.frame.width, 520)
+    XCTAssertLessThanOrEqual(settingsWindow.frame.width, 700)
+    XCTAssertGreaterThanOrEqual(settingsWindow.frame.height, 360)
+    XCTAssertLessThanOrEqual(settingsWindow.frame.height, 560)
+    AttachScreenshot(named: "settings-window-compact", app: app)
   }
 
   func testSettingsWindowUseLaunchDefaultRestoresResolvedSocketPath() throws {
@@ -108,7 +134,9 @@ final class MenuBarUISmokeTests: XCTestCase {
     }
   }
 
-  private func LaunchApp(startScreen: String? = nil, statusSurface: String? = nil)
+  private func LaunchApp(
+    startScreen: String? = nil, statusSurface: String? = nil, fixture: String? = nil
+  )
     -> XCUIApplication
   {
     let app = XCUIApplication()
@@ -118,6 +146,9 @@ final class MenuBarUISmokeTests: XCTestCase {
     }
     if let statusSurface {
       app.launchArguments += ["--open-status-surface", statusSurface]
+    }
+    if let fixture {
+      app.launchArguments += ["--fixture", fixture]
     }
     app.launchEnvironment["CODEXMENUBAR_UI_TEST_STATUS_TITLE"] = statusItemTitle
     app.launch()
@@ -173,5 +204,12 @@ final class MenuBarUISmokeTests: XCTestCase {
     let predicate = NSPredicate(format: "value == %@", expected)
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func AttachScreenshot(named name: String, app: XCUIApplication) {
+    let attachment = XCTAttachment(screenshot: app.screenshot())
+    attachment.name = name
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 }

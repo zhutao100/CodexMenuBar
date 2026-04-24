@@ -43,6 +43,7 @@ struct TurnMenuRowView: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .accessibilityIdentifier("turn.toggle.\(endpointRow.endpointId)")
 
       if activeTurn != nil {
         Text(TimelineSummaryText())
@@ -83,6 +84,7 @@ struct TurnMenuRowView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 10)
     .padding(.vertical, 8)
+    .accessibilityIdentifier("turn.row.\(endpointRow.endpointId)")
     .background(
       Color(nsColor: NSColor.controlBackgroundColor).opacity(0.78),
       in: RoundedRectangle(cornerRadius: 8, style: .continuous)

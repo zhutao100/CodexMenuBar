@@ -2,6 +2,12 @@ import AppKit
 import Observation
 import SwiftUI
 
+private enum SettingsWindowLayout {
+  static let initialSize = NSSize(width: 560, height: 480)
+  static let minSize = NSSize(width: 520, height: 360)
+  static let maxContentWidth: CGFloat = 760
+}
+
 @MainActor
 @Observable
 final class SettingsViewModel {
@@ -58,8 +64,9 @@ final class SettingsWindowController: NSWindowController {
     let hostingController = NSHostingController(rootView: contentView)
     let window = NSWindow(contentViewController: hostingController)
     window.title = "CodexMenuBar Settings"
-    window.setContentSize(NSSize(width: 540, height: 360))
-    window.styleMask = [.titled, .closable, .miniaturizable]
+    window.setContentSize(SettingsWindowLayout.initialSize)
+    window.contentMinSize = SettingsWindowLayout.minSize
+    window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
     window.isReleasedWhenClosed = false
     super.init(window: window)
   }
@@ -85,83 +92,95 @@ private struct SettingsView: View {
   let onQuickStart: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      HStack(spacing: 10) {
-        Image(systemName: model.connectionStateSymbol)
-          .imageScale(.large)
-          .foregroundStyle(ConnectionStateColor())
-        Text(model.connectionStateTitle)
-          .font(.headline)
-          .foregroundStyle(.primary)
-      }
-      .accessibilityElement(children: .combine)
-      .accessibilityIdentifier("settings.connectionStatus")
-
-      SettingsSection(title: "codexd Socket") {
-        VStack(alignment: .leading, spacing: 10) {
-          TextField(
-            "Optional socket path override for this app session",
-            text: $model.sessionSocketPathOverride
-          )
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .accessibilityIdentifier("settings.socketOverride")
-
-          HStack(spacing: 8) {
-            Button("Apply & Reconnect") {
-              onApplySocketOverride(model.sessionSocketPathOverride)
-            }
-            .keyboardShortcut(.defaultAction)
-            .accessibilityIdentifier("settings.applySocketOverride")
-
-            Button("Use Launch Default") {
-              model.sessionSocketPathOverride = ""
-              onApplySocketOverride(nil)
-            }
-            .accessibilityIdentifier("settings.useLaunchDefault")
-          }
-
-          VStack(alignment: .leading, spacing: 4) {
-            Text("Effective socket path")
-              .font(.caption)
+    VStack(spacing: 0) {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          HStack(spacing: 10) {
+            Image(systemName: model.connectionStateSymbol)
+              .imageScale(.large)
+              .foregroundStyle(ConnectionStateColor())
+            Text(model.connectionStateTitle)
+              .font(.headline)
               .foregroundStyle(.primary)
+          }
+          .accessibilityElement(children: .combine)
+          .accessibilityIdentifier("settings.connectionStatus")
 
-            Text(model.effectiveConfiguration.resolvedSocketPath)
+          SettingsSection(title: "codexd Socket") {
+            VStack(alignment: .leading, spacing: 10) {
+              TextField(
+                "Optional socket path override for this app session",
+                text: $model.sessionSocketPathOverride
+              )
+              .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
-              .textSelection(.enabled)
-              .accessibilityIdentifier("settings.effectiveSocketPath")
+              .accessibilityIdentifier("settings.socketOverride")
 
-            Text(model.effectiveConfiguration.source.description)
+              HStack(spacing: 8) {
+                Button("Apply & Reconnect") {
+                  onApplySocketOverride(model.sessionSocketPathOverride)
+                }
+                .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("settings.applySocketOverride")
+
+                Button("Use Launch Default") {
+                  model.sessionSocketPathOverride = ""
+                  onApplySocketOverride(nil)
+                }
+                .accessibilityIdentifier("settings.useLaunchDefault")
+              }
+
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Effective socket path")
+                  .font(.caption)
+                  .foregroundStyle(.primary)
+
+                Text(model.effectiveConfiguration.resolvedSocketPath)
+                  .font(.system(.body, design: .monospaced))
+                  .lineLimit(2)
+                  .truncationMode(.middle)
+                  .textSelection(.enabled)
+                  .help(model.effectiveConfiguration.resolvedSocketPath)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .accessibilityIdentifier("settings.effectiveSocketPath")
+
+                Text(model.effectiveConfiguration.source.description)
+                  .font(.caption)
+                  .foregroundStyle(.primary)
+              }
+
+              Text(
+                "Launch defaults still honor CODEXD_SOCKET_PATH and CODEX_HOME. The field above only overrides the socket for this running app."
+              )
               .font(.caption)
               .foregroundStyle(.primary)
+              .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
           }
 
-          Text(
-            "Launch defaults still honor CODEXD_SOCKET_PATH and CODEX_HOME. The field above only overrides the socket for this running app."
-          )
-          .font(.caption)
-          .foregroundStyle(.primary)
-          .fixedSize(horizontal: false, vertical: true)
+          SettingsSection(title: "Troubleshooting") {
+            VStack(alignment: .leading, spacing: 8) {
+              Text(
+                "If the status item is hidden on macOS 26, enable CodexMenuBar in System Settings → Menu Bar."
+              )
+              .fixedSize(horizontal: false, vertical: true)
+
+              Text(
+                "Use Quick Start to open a terminal and launch `codex`, or reconnect after codexd is already running."
+              )
+              .font(.caption)
+              .foregroundStyle(.primary)
+              .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .frame(maxWidth: SettingsWindowLayout.maxContentWidth, alignment: .topLeading)
       }
 
-      SettingsSection(title: "Troubleshooting") {
-        VStack(alignment: .leading, spacing: 8) {
-          Text(
-            "If the status item is hidden on macOS 26, enable CodexMenuBar in System Settings → Menu Bar."
-          )
-          .fixedSize(horizontal: false, vertical: true)
-
-          Text(
-            "Use Quick Start to open a terminal and launch `codex`, or reconnect after codexd is already running."
-          )
-          .font(.caption)
-          .foregroundStyle(.primary)
-          .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-      }
+      Divider()
 
       HStack(spacing: 8) {
         Button("Reconnect codexd", action: onReconnect)
@@ -170,8 +189,11 @@ private struct SettingsView: View {
           .accessibilityIdentifier("settings.quickStart")
         Spacer()
       }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 12)
+      .frame(maxWidth: SettingsWindowLayout.maxContentWidth, alignment: .leading)
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .padding(16)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("CodexMenuBar settings")
@@ -210,12 +232,12 @@ private struct SettingsSection<Content: View>: View {
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
         .fill(Color(nsColor: .controlBackgroundColor))
         .accessibilityHidden(true)
     )
     .overlay(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
         .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         .accessibilityHidden(true)
     )

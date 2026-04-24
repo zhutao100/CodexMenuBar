@@ -2,11 +2,37 @@ import AppKit
 import Observation
 import SwiftUI
 
+private enum StatusMenuLayout {
+  static let popoverWidth: CGFloat = 480
+  static let compactHeight: CGFloat = 260
+  static let activeHeight: CGFloat = 520
+  static let contentWidth: CGFloat = 456
+  static let activeListMaxHeight: CGFloat = 414
+}
+
 @MainActor
 final class StatusMenuController: NSObject, NSPopoverDelegate {
   enum UITestSurface: String {
     case popover
     case contextMenu = "context-menu"
+  }
+
+  private enum PopoverLayoutProfile: Equatable {
+    case compact
+    case active
+
+    init(for model: MenuBarViewModel) {
+      self = model.endpointRows.isEmpty ? .compact : .active
+    }
+
+    var height: CGFloat {
+      switch self {
+      case .compact:
+        return StatusMenuLayout.compactHeight
+      case .active:
+        return StatusMenuLayout.activeHeight
+      }
+    }
   }
 
   var ReconnectHandler: (() -> Void)?
@@ -22,6 +48,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
   private let contextMenu: NSMenu
   private let popover: NSPopover
   private let uiTestStatusItemTitle: String?
+  private var popoverLayoutProfile: PopoverLayoutProfile?
 
   init(model: MenuBarViewModel) {
     self.model = model
@@ -33,9 +60,12 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     super.init()
 
     popover.behavior = .transient
-    popover.animates = true
+    popover.animates = false
     popover.delegate = self
-    popover.contentSize = NSSize(width: 460, height: 360)
+    popover.contentSize = NSSize(
+      width: StatusMenuLayout.popoverWidth,
+      height: StatusMenuLayout.compactHeight
+    )
     popover.contentViewController = NSHostingController(
       rootView: StatusDropdownView(
         model: model,
@@ -161,7 +191,8 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
   }
 
   private func ShowPopover(using button: NSStatusBarButton) {
-    UpdatePopoverSize()
+    model.SyncSectionDisclosureState()
+    UpdatePopoverSize(force: true)
     let anchorRect = NSRect(
       x: button.bounds.midX - 1,
       y: button.bounds.maxY - 1,
@@ -209,7 +240,6 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
       _ = model.endpointRows.count
       _ = model.expandedEndpointIds.count
       _ = model.lowRateLimitWarningText
-      _ = model.viewRefreshToken
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         self?.UpdateButton()
@@ -259,18 +289,17 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     }
   }
 
-  private func UpdatePopoverSize() {
-    let width: CGFloat = 460
-    guard let contentView = popover.contentViewController?.view else {
-      popover.contentSize = NSSize(width: width, height: 280)
+  private func UpdatePopoverSize(force: Bool = false) {
+    let nextProfile = PopoverLayoutProfile(for: model)
+    guard force || nextProfile != popoverLayoutProfile || !popover.isShown else {
       return
     }
 
-    contentView.frame.size.width = width
-    contentView.layoutSubtreeIfNeeded()
-    let fittedHeight = contentView.fittingSize.height
-    let height = min(max(fittedHeight, 180), 520)
-    popover.contentSize = NSSize(width: width, height: height)
+    popoverLayoutProfile = nextProfile
+    popover.contentSize = NSSize(
+      width: StatusMenuLayout.popoverWidth,
+      height: nextProfile.height
+    )
   }
 
   private static func LoadStatusIcon() -> NSImage? {
@@ -323,6 +352,7 @@ private struct StatusDropdownView: View {
         Text(model.headerTitle)
           .font(.headline)
           .lineLimit(1)
+          .accessibilityIdentifier("status.headerTitle")
 
         Spacer(minLength: 4)
 
@@ -393,7 +423,7 @@ private struct StatusDropdownView: View {
           .padding(.vertical, 2)
         }
         .frame(maxWidth: .infinity)
-        .frame(maxHeight: 420)
+        .frame(maxHeight: StatusMenuLayout.activeListMaxHeight)
       }
 
       if let rateLimits = model.activeRateLimitInfo,
@@ -420,7 +450,7 @@ private struct StatusDropdownView: View {
       }
     }
     .padding(12)
-    .frame(width: 440)
+    .frame(width: StatusMenuLayout.contentWidth)
   }
 
   private func RateLimitText(rateLimits: RateLimitInfo, remaining: Int, limit: Int) -> String {

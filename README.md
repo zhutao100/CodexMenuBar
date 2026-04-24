@@ -107,6 +107,8 @@ Notes:
 
 - Unit tests are guarded by an in-process Seatbelt sandbox; set `SEATBELT_SANDBOX_DISABLE=1` to bypass.
 - For `scripts/ui/ui_loop.sh`, set `VERBOSE=1` to stream full `xcodebuild` output.
+- UI tests include deterministic launch harnesses for Settings, the context menu, the empty popover, and an active-turn fixture via `--fixture active-turn`.
+- If macOS blocks UI tests with an "XCTest is trying to Enable UI Automation" password prompt, keep the failed `.xcresult` and approve the OS permission before treating the GUI loop as authoritative. Manual `screencapture` evidence can be used as a fallback only.
 
 ## Configuration
 
