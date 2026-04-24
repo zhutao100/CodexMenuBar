@@ -13,12 +13,55 @@ set -euo pipefail
 #   .artifacts/e2e-codexd/<run-id>/{codexd.log,result.json}
 #   .artifacts/codexd-e2e.sock
 
+usage() {
+  cat <<'EOF'
+End-to-end smoke test for the codexd UDS protocol used by CodexMenuBar.
+
+Usage:
+  ./scripts/e2e_codexd.sh [--use-codex-on-path]
+
+Options:
+  --use-codex-on-path   Launch the installed `codex` binary from PATH instead of
+                        building/running from a local `codex` checkout.
+EOF
+}
+
+USE_CODEX_ON_PATH=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --use-codex-on-path)
+      USE_CODEX_ON_PATH=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "[e2e_codexd] ERROR: unexpected argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Prefer `config/external-projects.local.yaml` -> external_projects->codex->local_path
 # If the file or value is missing, warn and fall back to the repo parent directory.
 CODEX_REPO_ROOT=""
+CODEX_BIN=""
+CODEX_LAUNCH_DESC=""
+if [[ "${USE_CODEX_ON_PATH}" == "1" ]]; then
+  if ! CODEX_BIN="$(command -v codex)"; then
+    echo "[e2e_codexd] ERROR: --use-codex-on-path was set but `codex` was not found in PATH." >&2
+    exit 2
+  fi
+  CODEX_LAUNCH_DESC="PATH codex binary (${CODEX_BIN})"
+fi
+
 CONFIG_YAML="${ROOT}/config/external-projects.local.yaml"
-if [[ -f "${CONFIG_YAML}" ]]; then
+if [[ -z "${CODEX_BIN}" && -f "${CONFIG_YAML}" ]]; then
   # Extract the `external_projects.codex.local_path` value. Avoid non-stdlib YAML
   # deps; implement a minimal indentation-aware parser for this one value.
   VAL="$(python3 - "${CONFIG_YAML}" <<'PY'
@@ -87,15 +130,19 @@ PY
     echo "[e2e_codexd] WARNING: ${CONFIG_YAML} present but external_projects.codex.local_path not found; falling back." >&2
     CODEX_REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
   fi
-else
+elif [[ -z "${CODEX_BIN}" ]]; then
   echo "[e2e_codexd] WARNING: ${CONFIG_YAML} not found; falling back to repo parent." >&2
   CODEX_REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
 fi
 
-if [[ ! -d "${CODEX_REPO_ROOT}/codex-rs" ]]; then
+if [[ -z "${CODEX_BIN}" && ! -d "${CODEX_REPO_ROOT}/codex-rs" ]]; then
   echo "[e2e_codexd] ERROR: codex-rs not found under CODEX_REPO_ROOT=${CODEX_REPO_ROOT}" >&2
   echo "[e2e_codexd] HINT: set external_projects.codex.local_path in config/external-projects.local.yaml" >&2
   exit 2
+fi
+
+if [[ -z "${CODEX_LAUNCH_DESC}" ]]; then
+  CODEX_LAUNCH_DESC="local codex checkout (${CODEX_REPO_ROOT}/codex-rs)"
 fi
 
 RUN_ID="$(date -u +"%Y%m%dT%H%M%SZ")"
@@ -124,14 +171,24 @@ echo "[e2e_codexd] runId=${RUN_ID}"
 echo "[e2e_codexd] runDir=${RUN_DIR}"
 echo "[e2e_codexd] codexHome=${CODEX_HOME}"
 echo "[e2e_codexd] socketPath=${SOCKET_PATH}"
+echo "[e2e_codexd] launcher=${CODEX_LAUNCH_DESC}"
 
 echo "[e2e_codexd] starting codexd..."
-(
-  cd "${CODEX_REPO_ROOT}/codex-rs"
-  CODEX_HOME="${CODEX_HOME}" \
-    RUST_LOG="${RUST_LOG:-info}" \
-    cargo run -q -p codex-cli -- app-server codexd run --socket-path "${SOCKET_PATH}"
-) >"${CODEXD_LOG}" 2>&1 &
+if [[ -n "${CODEX_BIN}" ]]; then
+  (
+    cd "${ROOT}"
+    CODEX_HOME="${CODEX_HOME}" \
+      RUST_LOG="${RUST_LOG:-info}" \
+      "${CODEX_BIN}" app-server codexd run --socket-path "${SOCKET_PATH}"
+  ) >"${CODEXD_LOG}" 2>&1 &
+else
+  (
+    cd "${CODEX_REPO_ROOT}/codex-rs"
+    CODEX_HOME="${CODEX_HOME}" \
+      RUST_LOG="${RUST_LOG:-info}" \
+      cargo run -q -p codex-cli -- app-server codexd run --socket-path "${SOCKET_PATH}"
+  ) >"${CODEXD_LOG}" 2>&1 &
+fi
 CODEXD_PID="$!"
 
 SOCKET_WAIT_SECS="${SOCKET_WAIT_SECS:-120}"

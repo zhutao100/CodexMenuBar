@@ -44,6 +44,19 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/CodexMenuBar.app/Contents/MacOS/CodexMenuBar"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
+  CodexMenuBarUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/CodexMenuBarUITests
+    dependencies:
+      - target: CodexMenuBar
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codex.CodexMenuBarUITests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: CodexMenuBar
+
 schemes:
   CodexMenuBar:
     build:
@@ -54,3 +67,12 @@ schemes:
         - CodexMenuBarTests
       environmentVariables:
         SEATBELT_SANDBOX_WORKSPACE_ROOT: "$(SRCROOT)"
+
+  CodexMenuBarUI:
+    build:
+      targets:
+        CodexMenuBar: all
+        CodexMenuBarUITests: all
+    test:
+      targets:
+        - CodexMenuBarUITests

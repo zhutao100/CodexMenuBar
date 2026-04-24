@@ -17,6 +17,7 @@
 		6BD69309045BB6DC49DFB8C9 /* SandboxTestingBootstrap.c in Sources */ = {isa = PBXBuildFile; fileRef = 59D3A0D90750792399D48A4E /* SandboxTestingBootstrap.c */; };
 		860BAE53672CCFF76D8DDA7C /* menu-bar-view-model.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCCA46335FC47E30B60DBE37 /* menu-bar-view-model.swift */; };
 		864AF98C98159EFDB75E3B3C /* models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886DBAB2B96CBB285D141779 /* models.swift */; };
+		907D0EB16E012348061F0A08 /* menu-bar-ui-smoke-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FF07238A5029FC257CE5BC /* menu-bar-ui-smoke-tests.swift */; };
 		90EB39AD9EBFF1A243C72036 /* codexd-socket-configuration-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */; };
 		A033B68B6C072BC23F8E30E0 /* turn-menu-row-view.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3B2FA3C3246D682E69EDA5 /* turn-menu-row-view.swift */; };
 		AC30CDEE24AA447CF14489E6 /* app-delegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906DBD9B8AA0C207421AE097 /* app-delegate.swift */; };
@@ -26,6 +27,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		3BBDAB5CBF16701108DF3D9D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48F3262CB8220FE915E407E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B6F502A091615BD72E682F72;
+			remoteInfo = CodexMenuBar;
+		};
 		D35B5386911369EBBFF97A86 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 48F3262CB8220FE915E407E4 /* Project object */;
@@ -49,11 +57,13 @@
 		88F49D17DC71FDCE9C3E8A3E /* app-server-client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "app-server-client.swift"; sourceTree = "<group>"; };
 		906DBD9B8AA0C207421AE097 /* app-delegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "app-delegate.swift"; sourceTree = "<group>"; };
 		9907DD2492503B856D3F71BC /* menu-bar-view-model-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "menu-bar-view-model-tests.swift"; sourceTree = "<group>"; };
+		A5FF07238A5029FC257CE5BC /* menu-bar-ui-smoke-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "menu-bar-ui-smoke-tests.swift"; sourceTree = "<group>"; };
 		A8F9E96E6834EFE102E5F452 /* codexd-socket-configuration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "codexd-socket-configuration.swift"; sourceTree = "<group>"; };
 		BD3B2FA3C3246D682E69EDA5 /* turn-menu-row-view.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-menu-row-view.swift"; sourceTree = "<group>"; };
 		C4BF3E9E20F45FD084B8F762 /* CodexMenuBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodexMenuBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D13E0ACEDDE5320AD61E859E /* terminal-launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "terminal-launcher.swift"; sourceTree = "<group>"; };
 		DCCA46335FC47E30B60DBE37 /* menu-bar-view-model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "menu-bar-view-model.swift"; sourceTree = "<group>"; };
+		E80FF4D480F85F447D2FBF21 /* CodexMenuBarUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodexMenuBarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -74,6 +84,7 @@
 			children = (
 				8673845FF8A7B929AE3B48EF /* CodexMenuBar.app */,
 				C4BF3E9E20F45FD084B8F762 /* CodexMenuBarTests.xctest */,
+				E80FF4D480F85F447D2FBF21 /* CodexMenuBarUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -106,11 +117,21 @@
 			path = Sources/CodexMenuBar;
 			sourceTree = "<group>";
 		};
+		BCBD946455DCFF0FA0615007 /* CodexMenuBarUITests */ = {
+			isa = PBXGroup;
+			children = (
+				A5FF07238A5029FC257CE5BC /* menu-bar-ui-smoke-tests.swift */,
+			);
+			name = CodexMenuBarUITests;
+			path = Tests/CodexMenuBarUITests;
+			sourceTree = "<group>";
+		};
 		FD73DC34D75C3DC5521EC6A1 = {
 			isa = PBXGroup;
 			children = (
 				AFB22ADA88A492B31EA2B254 /* CodexMenuBar */,
 				092A45A5132C7FEC9902AEB4 /* CodexMenuBarTests */,
+				BCBD946455DCFF0FA0615007 /* CodexMenuBarUITests */,
 				AEDF6989BC83F38DE2309280 /* SwiftPMSandboxTestingBootstrap */,
 				6D11B752FBD1FD20A6FE4396 /* Products */,
 			);
@@ -119,6 +140,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		735752EA4436D27B59C86BB1 /* CodexMenuBarUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC75E0632DC9850BFF0B6D78 /* Build configuration list for PBXNativeTarget "CodexMenuBarUITests" */;
+			buildPhases = (
+				E123B8F5703DF67835C46A4D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FAB8B802E2B292E11509C8D9 /* PBXTargetDependency */,
+			);
+			name = CodexMenuBarUITests;
+			packageProductDependencies = (
+			);
+			productName = CodexMenuBarUITests;
+			productReference = E80FF4D480F85F447D2FBF21 /* CodexMenuBarUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		B6F502A091615BD72E682F72 /* CodexMenuBar */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5E71D5E57052D8EBF070463B /* Build configuration list for PBXNativeTarget "CodexMenuBar" */;
@@ -163,6 +202,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					735752EA4436D27B59C86BB1 = {
+						TestTargetID = B6F502A091615BD72E682F72;
+					};
 				};
 			};
 			buildConfigurationList = 379D0F5944E26DFB782B8D4D /* Build configuration list for PBXProject "CodexMenuBar" */;
@@ -181,6 +223,7 @@
 			targets = (
 				B6F502A091615BD72E682F72 /* CodexMenuBar */,
 				DD091C48C0EF22A980CBA79A /* CodexMenuBarTests */,
+				735752EA4436D27B59C86BB1 /* CodexMenuBarUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -216,6 +259,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E123B8F5703DF67835C46A4D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				907D0EB16E012348061F0A08 /* menu-bar-ui-smoke-tests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -224,9 +275,31 @@
 			target = B6F502A091615BD72E682F72 /* CodexMenuBar */;
 			targetProxy = D35B5386911369EBBFF97A86 /* PBXContainerItemProxy */;
 		};
+		FAB8B802E2B292E11509C8D9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B6F502A091615BD72E682F72 /* CodexMenuBar */;
+			targetProxy = 3BBDAB5CBF16701108DF3D9D /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		084572B3403480C72EC4880A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.CodexMenuBarUITests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = CodexMenuBar;
+			};
+			name = Debug;
+		};
 		1C8D68A4735AA3E2473C16B9 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -297,6 +370,23 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		4069489A3F4EF5EC011145D7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.CodexMenuBarUITests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = CodexMenuBar;
 			};
 			name = Release;
 		};
@@ -431,6 +521,15 @@
 			buildConfigurations = (
 				B8A53163FDB20903361E0D4C /* Debug */,
 				1C8D68A4735AA3E2473C16B9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BC75E0632DC9850BFF0B6D78 /* Build configuration list for PBXNativeTarget "CodexMenuBarUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				084572B3403480C72EC4880A /* Debug */,
+				4069489A3F4EF5EC011145D7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

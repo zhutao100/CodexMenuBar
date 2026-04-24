@@ -4,6 +4,11 @@ import SwiftUI
 
 @MainActor
 final class StatusMenuController: NSObject, NSPopoverDelegate {
+  enum UITestSurface: String {
+    case popover
+    case contextMenu = "context-menu"
+  }
+
   var ReconnectHandler: (() -> Void)?
   var QuickStartHandler: (() -> Void)?
   var SettingsHandler: (() -> Void)?
@@ -14,13 +19,17 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
   private let model: MenuBarViewModel
   private let statusItem: NSStatusItem
   private let statusIcon: NSImage?
+  private let contextMenu: NSMenu
   private let popover: NSPopover
+  private let uiTestStatusItemTitle: String?
 
   init(model: MenuBarViewModel) {
     self.model = model
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     statusIcon = Self.LoadStatusIcon()
+    contextMenu = NSMenu(title: "CodexMenuBar")
     popover = NSPopover()
+    uiTestStatusItemTitle = Self.LoadUITestStatusItemTitle()
     super.init()
 
     popover.behavior = .transient
@@ -48,10 +57,13 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
       button.title = ""
       button.image = statusIcon
       button.imagePosition = .imageLeading
+      button.toolTip = "CodexMenuBar"
       button.target = self
       button.action = #selector(OnStatusItemPressed)
+      button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
+    ConfigureContextMenu()
     UpdateButton()
     UpdatePopoverSize()
     ObserveModel()
@@ -63,18 +75,120 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
       return
     }
 
+    if IsSecondaryClick(NSApp.currentEvent) {
+      ShowContextMenu(using: button)
+      return
+    }
+
     if popover.isShown {
       popover.performClose(nil)
     } else {
-      UpdatePopoverSize()
-      let anchorRect = NSRect(
-        x: button.bounds.midX - 1,
-        y: button.bounds.maxY - 1,
-        width: 2,
-        height: 1
-      )
-      popover.show(relativeTo: anchorRect, of: button, preferredEdge: .minY)
+      ShowPopover(using: button)
     }
+  }
+
+  func PresentUITestSurface(_ surface: UITestSurface) {
+    guard let button = statusItem.button else {
+      return
+    }
+
+    switch surface {
+    case .popover:
+      ShowPopover(using: button)
+    case .contextMenu:
+      ShowContextMenu(using: button)
+    }
+  }
+
+  private func ConfigureContextMenu() {
+    let reconnectItem = NSMenuItem(
+      title: "Reconnect codexd",
+      action: #selector(OnContextReconnect),
+      keyEquivalent: ""
+    )
+    reconnectItem.target = self
+
+    let quickStartItem = NSMenuItem(
+      title: "Quick Start",
+      action: #selector(OnContextQuickStart),
+      keyEquivalent: ""
+    )
+    quickStartItem.target = self
+
+    let settingsItem = NSMenuItem(
+      title: "Settings...",
+      action: #selector(OnContextSettings),
+      keyEquivalent: ""
+    )
+    settingsItem.target = self
+
+    let quitItem = NSMenuItem(
+      title: "Quit CodexMenuBar",
+      action: #selector(OnContextQuit),
+      keyEquivalent: ""
+    )
+    quitItem.target = self
+
+    contextMenu.items = [
+      reconnectItem,
+      quickStartItem,
+      settingsItem,
+      .separator(),
+      quitItem,
+    ]
+  }
+
+  private func IsSecondaryClick(_ event: NSEvent?) -> Bool {
+    guard let event else {
+      return false
+    }
+
+    switch event.type {
+    case .rightMouseUp:
+      return true
+    case .leftMouseUp:
+      return event.modifierFlags.contains(.control)
+    default:
+      return false
+    }
+  }
+
+  private func ShowContextMenu(using button: NSStatusBarButton) {
+    popover.performClose(nil)
+    statusItem.menu = contextMenu
+    button.performClick(nil)
+    statusItem.menu = nil
+  }
+
+  private func ShowPopover(using button: NSStatusBarButton) {
+    UpdatePopoverSize()
+    let anchorRect = NSRect(
+      x: button.bounds.midX - 1,
+      y: button.bounds.maxY - 1,
+      width: 2,
+      height: 1
+    )
+    popover.show(relativeTo: anchorRect, of: button, preferredEdge: .minY)
+  }
+
+  @objc
+  private func OnContextReconnect() {
+    ReconnectHandler?()
+  }
+
+  @objc
+  private func OnContextQuickStart() {
+    QuickStartHandler?()
+  }
+
+  @objc
+  private func OnContextSettings() {
+    SettingsHandler?()
+  }
+
+  @objc
+  private func OnContextQuit() {
+    QuitHandler?()
   }
 
   func popoverDidShow(_ notification: Notification) {
@@ -107,6 +221,15 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
 
   private func UpdateButton() {
     guard let button = statusItem.button else { return }
+
+    if let uiTestStatusItemTitle {
+      if let statusIcon {
+        button.image = statusIcon
+        button.imagePosition = .imageLeading
+      }
+      button.title = uiTestStatusItemTitle
+      return
+    }
 
     if let statusIcon {
       button.image = statusIcon
@@ -168,6 +291,20 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     }
     return nil
   }
+
+  private static func LoadUITestStatusItemTitle() -> String? {
+    guard ProcessInfo.processInfo.arguments.contains("--uitest") else {
+      return nil
+    }
+
+    let value = ProcessInfo.processInfo.environment["CODEXMENUBAR_UI_TEST_STATUS_TITLE"]?
+      .trimmingCharacters(
+        in: .whitespacesAndNewlines)
+    if let value, !value.isEmpty {
+      return value
+    }
+    return "CodexUITest"
+  }
 }
 
 private struct StatusDropdownView: View {
@@ -216,6 +353,7 @@ private struct StatusDropdownView: View {
           }
           .buttonStyle(.bordered)
           .controlSize(.small)
+          .accessibilityIdentifier("status.quickStart")
         }
       } else {
         ScrollView {
@@ -273,10 +411,12 @@ private struct StatusDropdownView: View {
 
       HStack(spacing: 8) {
         Button("Reconnect codexd", action: onReconnectAll)
+          .accessibilityIdentifier("status.reconnect")
         Button("Settings", action: onOpenSettings)
           .accessibilityIdentifier("status.settings")
         Spacer()
         Button("Quit CodexMenuBar", action: onQuit)
+          .accessibilityIdentifier("status.quit")
       }
     }
     .padding(12)

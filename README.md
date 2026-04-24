@@ -9,6 +9,8 @@ It connects to a single local `codexd` daemon, and renders authoritative active 
 ## Features
 
 - Menu bar icon state for connected/running/error.
+- Left-click popover and right-click context menu from the status item.
+- Settings window for session-only `codexd` socket overrides and reconnects.
 - One row per active turn.
 - Terminal-style progress semantics:
   - working status
@@ -97,8 +99,9 @@ If the menu bar disconnects, it reconnects and re-fetches snapshot state before 
 ## Verify
 
 - Xcode build + unit tests (low-noise logs): `scripts/verify_fast.sh`
-- Evidence run (`.xcresult`): `scripts/ui/ui_loop.sh --scheme CodexMenuBar --destination 'platform=macOS'`
+- GUI smoke + evidence run (`.xcresult`): `scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing`
 - `codexd` end-to-end smoke: `scripts/e2e_codexd.sh`
+- `codexd` smoke using the installed `codex` on `PATH`: `scripts/e2e_codexd.sh --use-codex-on-path`
 
 Notes:
 

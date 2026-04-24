@@ -28,7 +28,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     NSApplication.shared.setActivationPolicy(.accessory)
     ConfigureStatusMenu()
     ConfigureClient()
-    appServerClient.Start()
+    if !IsUITestMode() {
+      appServerClient.Start()
+    }
+    if ShouldLaunchIntoSettings() {
+      ShowSettingsWindow()
+    }
+    PresentUITestSurfaceIfRequested()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
@@ -98,6 +104,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func ShowSettingsWindow() {
     settingsWindowController.Show()
+  }
+
+  private func IsUITestMode() -> Bool {
+    ProcessInfo.processInfo.arguments.contains("--uitest")
+  }
+
+  private func ShouldLaunchIntoSettings() -> Bool {
+    guard let startScreen = ArgumentValue(after: "--start-screen") else {
+      return false
+    }
+    return startScreen.caseInsensitiveCompare("settings") == .orderedSame
+  }
+
+  private func PresentUITestSurfaceIfRequested() {
+    guard IsUITestMode(),
+      let rawSurface = ArgumentValue(after: "--open-status-surface"),
+      let surface = StatusMenuController.UITestSurface(
+        rawValue: rawSurface.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    else {
+      return
+    }
+
+    DispatchQueue.main.async { [weak self] in
+      self?.statusMenu.PresentUITestSurface(surface)
+    }
+  }
+
+  private func ArgumentValue(after option: String) -> String? {
+    let arguments = ProcessInfo.processInfo.arguments
+    guard let optionIndex = arguments.firstIndex(of: option),
+      arguments.indices.contains(optionIndex + 1)
+    else {
+      return nil
+    }
+    return arguments[optionIndex + 1]
   }
 
   private func StartTimer() {

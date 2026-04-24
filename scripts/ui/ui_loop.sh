@@ -262,7 +262,9 @@ run_xcodebuild_test() {
     return $?
   fi
 
-  if ! (cd "$PACKAGE_ROOT" && "${cmd[@]}") >"$log_file" 2>&1; then
+  if (cd "$PACKAGE_ROOT" && "${cmd[@]}") >"$log_file" 2>&1; then
+    return 0
+  else
     local status=$?
     echo "==> xcodebuild failed (log: $log_file)" >&2
     tail -n 200 "$log_file" >&2 || true
@@ -294,7 +296,9 @@ run_test_without_building() {
     return $?
   fi
 
-  if ! (cd "$PACKAGE_ROOT" && "${cmd[@]}") >"$log_file" 2>&1; then
+  if (cd "$PACKAGE_ROOT" && "${cmd[@]}") >"$log_file" 2>&1; then
+    return 0
+  else
     local status=$?
     echo "==> xcodebuild failed (log: $log_file)" >&2
     tail -n 200 "$log_file" >&2 || true
@@ -361,6 +365,28 @@ if [[ -d "$RESULT_BUNDLE" ]]; then
   "$SCRIPT_DIR/xcresult_summary.sh" "$RESULT_BUNDLE" "$SUMMARY_JSON" || true
 else
   echo "{}" > "$SUMMARY_JSON"
+fi
+
+if [[ "$xcodebuild_status" -eq 0 && -f "$SUMMARY_JSON" ]]; then
+  summary_result="$(
+    python3 - "$SUMMARY_JSON" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+print(str(data.get("result", "")))
+PY
+  )"
+  if [[ -n "$summary_result" && "$summary_result" != "Succeeded" && "$summary_result" != "Passed" ]]; then
+    echo "==> xcresult summary reported non-success result: $summary_result" >&2
+    xcodebuild_status=4
+  fi
 fi
 
 if [[ -d "$RESULT_BUNDLE" ]]; then

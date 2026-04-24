@@ -86,10 +86,18 @@ private struct SettingsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Label(model.connectionStateTitle, systemImage: model.connectionStateSymbol)
-        .foregroundStyle(ConnectionStateColor())
+      HStack(spacing: 10) {
+        Image(systemName: model.connectionStateSymbol)
+          .imageScale(.large)
+          .foregroundStyle(ConnectionStateColor())
+        Text(model.connectionStateTitle)
+          .font(.headline)
+          .foregroundStyle(.primary)
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityIdentifier("settings.connectionStatus")
 
-      GroupBox("codexd Socket") {
+      SettingsSection(title: "codexd Socket") {
         VStack(alignment: .leading, spacing: 10) {
           TextField(
             "Optional socket path override for this app session",
@@ -97,44 +105,48 @@ private struct SettingsView: View {
           )
           .textFieldStyle(.roundedBorder)
           .font(.system(.body, design: .monospaced))
+          .accessibilityIdentifier("settings.socketOverride")
 
           HStack(spacing: 8) {
             Button("Apply & Reconnect") {
               onApplySocketOverride(model.sessionSocketPathOverride)
             }
             .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("settings.applySocketOverride")
 
             Button("Use Launch Default") {
               model.sessionSocketPathOverride = ""
               onApplySocketOverride(nil)
             }
+            .accessibilityIdentifier("settings.useLaunchDefault")
           }
 
           VStack(alignment: .leading, spacing: 4) {
             Text("Effective socket path")
               .font(.caption)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.primary)
 
             Text(model.effectiveConfiguration.resolvedSocketPath)
               .font(.system(.body, design: .monospaced))
               .textSelection(.enabled)
+              .accessibilityIdentifier("settings.effectiveSocketPath")
 
             Text(model.effectiveConfiguration.source.description)
               .font(.caption)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.primary)
           }
 
           Text(
             "Launch defaults still honor CODEXD_SOCKET_PATH and CODEX_HOME. The field above only overrides the socket for this running app."
           )
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.primary)
           .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
       }
 
-      GroupBox("Troubleshooting") {
+      SettingsSection(title: "Troubleshooting") {
         VStack(alignment: .leading, spacing: 8) {
           Text(
             "If the status item is hidden on macOS 26, enable CodexMenuBar in System Settings → Menu Bar."
@@ -145,7 +157,7 @@ private struct SettingsView: View {
             "Use Quick Start to open a terminal and launch `codex`, or reconnect after codexd is already running."
           )
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(.primary)
           .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -153,12 +165,16 @@ private struct SettingsView: View {
 
       HStack(spacing: 8) {
         Button("Reconnect codexd", action: onReconnect)
+          .accessibilityIdentifier("settings.reconnect")
         Button("Quick Start", action: onQuickStart)
+          .accessibilityIdentifier("settings.quickStart")
         Spacer()
       }
     }
     .padding(16)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("CodexMenuBar settings")
   }
 
   private func ConnectionStateColor() -> Color {
@@ -172,5 +188,38 @@ private struct SettingsView: View {
     case .disconnected:
       return .secondary
     }
+  }
+}
+
+private struct SettingsSection<Content: View>: View {
+  let title: String
+  let content: Content
+
+  init(title: String, @ViewBuilder content: () -> Content) {
+    self.title = title
+    self.content = content()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(title)
+        .font(.headline)
+
+      content
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(Color(nsColor: .controlBackgroundColor))
+        .accessibilityHidden(true)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        .accessibilityHidden(true)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(title)
   }
 }
