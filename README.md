@@ -119,3 +119,7 @@ This repo supports optional local configuration under the `config/` directory. T
 `scripts/e2e_codexd.sh` looks for `external_projects->codex->local_path` inside this file to locate a developer-built `codex` checkout. If the file or value is missing the script will print a warning and fall back to the repository parent directory.
 
 `cp config/external-projects.example.yaml config/external-projects.local.yaml` and update the `local_path`.
+
+## Acknowledgments
+
+- Inspired by [kgruiz's draft work](https://github.com/kgruiz/codex).
