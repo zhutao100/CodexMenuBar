@@ -19,12 +19,17 @@ targets:
       - path: Sources/CodexMenuBar
         excludes:
           - Resources
-    resources:
-      - path: Sources/CodexMenuBar/Resources
+      - path: Sources/CodexMenuBar/Resources/Assets.xcassets
+        buildPhase: resources
+      - path: Sources/CodexMenuBar/Resources/svgs
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.codex.CodexMenuBar
         GENERATE_INFOPLIST_FILE: "YES"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleIconName: AppIcon
         INFOPLIST_KEY_LSUIElement: "YES"
 
   CodexMenuBarTests:

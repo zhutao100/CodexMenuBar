@@ -21,6 +21,8 @@ The app also exposes a Settings window from the menu bar dropdown. Use it for se
 
 UI tests use launch harnesses (`--start-screen Settings`, `--open-status-surface popover|context-menu`, `--fixture active-turn`). If macOS blocks XCUITest with an "XCTest is trying to Enable UI Automation" password prompt, preserve the `.xcresult`; manual screenshots are only fallback evidence until the OS permission is granted.
 
+Icon assets: the app bundle icon is `Sources/CodexMenuBar/Resources/Assets.xcassets/AppIcon.appiconset`, generated from `Resources/svgs/codex-app.svg`; the menu bar template icon loads from `Resources/svgs/codex.svg`. Keep the SVGs valid when replacing icons, then regenerate the Xcode project.
+
 ## Sandboxed tests (macos-sandbox-testing)
 
 Unit tests (SwiftPM and Xcode) are guarded by an in-process Seatbelt sandbox to prevent writes outside the workspace.

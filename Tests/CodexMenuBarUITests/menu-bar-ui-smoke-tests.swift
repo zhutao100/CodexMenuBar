@@ -23,6 +23,18 @@ final class MenuBarUISmokeTests: XCTestCase {
     AttachScreenshot(named: "settings-opened-from-status-popover", app: app)
   }
 
+  func testStatusPopoverDismissesWhenClickingElsewhere() throws {
+    let app = LaunchApp(statusSurface: "popover")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    let settingsButton = app.buttons["status.settings"]
+    XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+
+    ClickAwayFromStatusPopover(statusItem: statusItem)
+    XCTAssertTrue(WaitForNonExistence(of: settingsButton))
+  }
+
   func testActiveStatusPopoverFixtureShowsStableActiveTurnPanel() throws {
     let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
     let statusItem = try StatusItem(in: app)
@@ -30,8 +42,8 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
     let header = app.staticTexts["status.headerTitle"]
     XCTAssertTrue(header.waitForExistence(timeout: 5))
-    XCTAssertEqual(header.label, "Codex - 1 active")
-    XCTAssertTrue(app.buttons["turn.toggle.fixture-endpoint"].waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: header, equals: "Codex - 1 active"))
+    XCTAssertTrue(app.buttons["turn.row.fixture-endpoint"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["status.settings"].exists)
     AttachScreenshot(named: "active-status-popover", app: app)
   }
@@ -204,6 +216,25 @@ final class MenuBarUISmokeTests: XCTestCase {
     let predicate = NSPredicate(format: "value == %@", expected)
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func WaitForNonExistence(of element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
+    let predicate = NSPredicate(format: "exists == false")
+    let expectation = expectation(for: predicate, evaluatedWith: element)
+    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func ClickAwayFromStatusPopover(statusItem: XCUIElement) {
+    let systemUI = XCUIApplication(bundleIdentifier: "com.apple.systemuiserver")
+    let menuBar = systemUI.menuBars.firstMatch
+    if menuBar.waitForExistence(timeout: 2) {
+      menuBar.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).click()
+      return
+    }
+
+    statusItem.coordinate(withNormalizedOffset: CGVector(dx: 0.0, dy: 0.0))
+      .withOffset(CGVector(dx: -200, dy: 80))
+      .click()
   }
 
   private func AttachScreenshot(named name: String, app: XCUIApplication) {

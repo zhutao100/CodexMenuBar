@@ -49,6 +49,9 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
   private let popover: NSPopover
   private let uiTestStatusItemTitle: String?
   private var popoverLayoutProfile: PopoverLayoutProfile?
+  private var popoverDismissMonitors: [Any] = []
+  private var appResignObserver: NSObjectProtocol?
+  private var workspaceActivationObserver: NSObjectProtocol?
 
   init(model: MenuBarViewModel) {
     self.model = model
@@ -60,7 +63,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     super.init()
 
     popover.behavior = .transient
-    popover.animates = false
+    popover.animates = true
     popover.delegate = self
     popover.contentSize = NSSize(
       width: StatusMenuLayout.popoverWidth,
@@ -72,7 +75,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
         onReconnectAll: { [weak self] in self?.ReconnectHandler?() },
         onQuickStart: { [weak self] in self?.QuickStartHandler?() },
         onOpenSettings: { [weak self] in
-          self?.popover.performClose(nil)
+          self?.ClosePopover()
           self?.SettingsHandler?()
         },
         onOpenTerminal: { [weak self] workingDirectory in
@@ -111,7 +114,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     }
 
     if popover.isShown {
-      popover.performClose(nil)
+      ClosePopover()
     } else {
       ShowPopover(using: button)
     }
@@ -183,8 +186,137 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     }
   }
 
-  private func ShowContextMenu(using button: NSStatusBarButton) {
+  private func ClosePopover() {
+    guard popover.isShown else {
+      return
+    }
+
     popover.performClose(nil)
+  }
+
+  private func StartPopoverDismissMonitoring() {
+    guard popoverDismissMonitors.isEmpty else {
+      return
+    }
+
+    let eventMask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+
+    if let localMonitor = NSEvent.addLocalMonitorForEvents(
+      matching: eventMask,
+      handler: {
+        [weak self] event in
+        let windowNumber = event.windowNumber
+        let locationX = event.locationInWindow.x
+        let locationY = event.locationInWindow.y
+
+        Task { @MainActor [weak self] in
+          self?.ClosePopoverIfClickIsOutside(
+            windowNumber: windowNumber,
+            locationInWindow: NSPoint(x: locationX, y: locationY)
+          )
+        }
+
+        return event
+      })
+    {
+      popoverDismissMonitors.append(localMonitor)
+    }
+
+    if let globalMonitor = NSEvent.addGlobalMonitorForEvents(
+      matching: eventMask,
+      handler: {
+        [weak self] _ in
+        Task { @MainActor [weak self] in
+          self?.ClosePopover()
+        }
+      })
+    {
+      popoverDismissMonitors.append(globalMonitor)
+    }
+
+    appResignObserver = NotificationCenter.default.addObserver(
+      forName: NSApplication.didResignActiveNotification,
+      object: NSApp,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.ClosePopover()
+      }
+    }
+
+    workspaceActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] notification in
+      let activatedApplication =
+        notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+        as? NSRunningApplication
+      let isCurrentApplication =
+        activatedApplication?.processIdentifier == NSRunningApplication.current.processIdentifier
+
+      guard !isCurrentApplication else {
+        return
+      }
+
+      Task { @MainActor [weak self] in
+        self?.ClosePopover()
+      }
+    }
+  }
+
+  private func StopPopoverDismissMonitoring() {
+    for monitor in popoverDismissMonitors {
+      NSEvent.removeMonitor(monitor)
+    }
+    popoverDismissMonitors.removeAll()
+
+    if let appResignObserver {
+      NotificationCenter.default.removeObserver(appResignObserver)
+      self.appResignObserver = nil
+    }
+
+    if let workspaceActivationObserver {
+      NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
+      self.workspaceActivationObserver = nil
+    }
+  }
+
+  private func ClosePopoverIfClickIsOutside(
+    windowNumber: Int,
+    locationInWindow: NSPoint
+  ) {
+    guard popover.isShown else {
+      return
+    }
+
+    if let popoverWindow = popover.contentViewController?.view.window,
+      popoverWindow.windowNumber == windowNumber
+    {
+      return
+    }
+
+    if IsStatusButtonClick(windowNumber: windowNumber, locationInWindow: locationInWindow) {
+      return
+    }
+
+    ClosePopover()
+  }
+
+  private func IsStatusButtonClick(windowNumber: Int, locationInWindow: NSPoint) -> Bool {
+    guard let button = statusItem.button,
+      let buttonWindow = button.window,
+      buttonWindow.windowNumber == windowNumber
+    else {
+      return false
+    }
+
+    let locationInButton = button.convert(locationInWindow, from: nil)
+    return button.bounds.contains(locationInButton)
+  }
+
+  private func ShowContextMenu(using button: NSStatusBarButton) {
+    ClosePopover()
     statusItem.menu = contextMenu
     button.performClick(nil)
     statusItem.menu = nil
@@ -200,6 +332,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
       height: 1
     )
     popover.show(relativeTo: anchorRect, of: button, preferredEdge: .minY)
+    NSApp.activate(ignoringOtherApps: true)
   }
 
   @objc
@@ -224,11 +357,13 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
 
   func popoverDidShow(_ notification: Notification) {
     _ = notification
+    StartPopoverDismissMonitoring()
     PopoverVisibilityChanged?(true)
   }
 
   func popoverDidClose(_ notification: Notification) {
     _ = notification
+    StopPopoverDismissMonitoring()
     PopoverVisibilityChanged?(false)
     model.ClearExpandedState()
   }
@@ -308,12 +443,23 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     #else
       let bundle = Bundle.main
     #endif
-    let iconUrls = [
-      bundle.url(forResource: "codex-app", withExtension: "svg"),
-      bundle.url(forResource: "codex-app", withExtension: "svg", subdirectory: "svgs"),
+    let iconCandidates: [(name: String, subdirectory: String?)] = [
+      ("codex", "svgs"),
+      ("codex", "Resources/svgs"),
+      ("codex", nil),
+      ("codex-app", "svgs"),
+      ("codex-app", "Resources/svgs"),
+      ("codex-app", nil),
     ]
-    for iconUrl in iconUrls {
-      guard let url = iconUrl, let image = NSImage(contentsOf: url) else { continue }
+    for iconCandidate in iconCandidates {
+      guard
+        let url = bundle.url(
+          forResource: iconCandidate.name,
+          withExtension: "svg",
+          subdirectory: iconCandidate.subdirectory
+        ),
+        let image = NSImage(contentsOf: url)
+      else { continue }
       image.isTemplate = true
       image.size = NSSize(width: 18, height: 18)
       return image
