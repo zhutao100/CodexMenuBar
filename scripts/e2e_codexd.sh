@@ -6,8 +6,8 @@ set -euo pipefail
 # This script:
 # - launches `codex app-server codexd run` with a repo-local CODEX_HOME + socket path
 # - publishes a small set of runtime notifications (register + turn started/completed)
-# - verifies a subscriber can `codexd/snapshot`, then `codexd/subscribe` with `afterSeq`
-#   and receive the replayed `codexd/event` stream
+# - verifies a subscriber can `codexd/hello`, `codexd/snapshot`, then
+#   `codexd/subscribe` with `afterSeq` and receive the replayed `codexd/event` stream
 #
 # Artifacts:
 #   .artifacts/e2e-codexd/<run-id>/{codexd.log,result.json}
@@ -236,27 +236,47 @@ def connect():
   return s
 
 sub = connect()
-send_line(sub, {"id": 1, "method": "codexd/snapshot", "params": {}})
+send_line(sub, {"id": 1, "method": "codexd/hello", "params": {}})
+send_line(sub, {"id": 2, "method": "codexd/snapshot", "params": {}})
 
+hello = None
 snapshot = None
 events = []
 subscribe_response = None
 
+def fail(msg):
+  raise SystemExit(msg)
+
 def handle_line(raw):
-  global snapshot, subscribe_response
+  global hello, snapshot, subscribe_response
   obj = json.loads(raw)
   if "method" in obj:
     events.append(obj)
     return
   if obj.get("id") == 1:
-    snapshot = obj
+    hello = obj
     return
   if obj.get("id") == 2:
+    snapshot = obj
+    return
+  if obj.get("id") == 3:
     subscribe_response = obj
     return
 
+while hello is None:
+  handle_line(recv_line(sub))
+
 while snapshot is None:
   handle_line(recv_line(sub))
+
+if "result" not in hello:
+  fail(f"missing hello result: {hello!r}")
+
+hello_result = hello["result"]
+if int(hello_result.get("protocolVersion", 0)) < 1:
+  fail(f"unexpected protocolVersion in hello result: {hello_result!r}")
+if "eventReplay" not in (hello_result.get("capabilities") or []):
+  fail(f"expected eventReplay capability in hello result: {hello_result!r}")
 
 after_seq = int(snapshot["result"]["seq"])
 
@@ -279,6 +299,21 @@ send_line(prod, {
 })
 send_line(prod, {
   "id": 2,
+  "method": "codexd/runtime/updateState",
+  "params": {
+    "runtimeId": runtime_id,
+    "activeTurns": [{
+      "threadId": thread_id,
+      "turnId": turn_id,
+      "status": "inProgress",
+      "startedAt": 1760000000,
+      "model": "gpt-5-codex",
+      "latestLabel": "Running e2e",
+    }],
+  },
+})
+send_line(prod, {
+  "id": 3,
   "method": "codexd/runtime/event",
   "params": {
     "runtimeId": runtime_id,
@@ -295,7 +330,7 @@ send_line(prod, {
   },
 })
 send_line(prod, {
-  "id": 3,
+  "id": 4,
   "method": "codexd/runtime/event",
   "params": {
     "runtimeId": runtime_id,
@@ -317,7 +352,7 @@ deadline = time.time() + 5.0
 acked = False
 while time.time() < deadline:
   obj = json.loads(recv_line(prod, timeout_s=1.0))
-  if obj.get("id") == 3:
+  if obj.get("id") == 4:
     if "result" not in obj:
       fail(f"missing producer result: {obj!r}")
     acked = True
@@ -326,16 +361,13 @@ if not acked:
   fail("timed out waiting for producer ack")
 prod.close()
 
-send_line(sub, {"id": 2, "method": "codexd/subscribe", "params": {"afterSeq": after_seq}})
+send_line(sub, {"id": 3, "method": "codexd/subscribe", "params": {"afterSeq": after_seq}})
 
 deadline = time.time() + 5.0
 while time.time() < deadline and (subscribe_response is None or len(events) < 3):
   handle_line(recv_line(sub, timeout_s=1.0))
 
 sub.close()
-
-def fail(msg):
-  raise SystemExit(msg)
 
 if subscribe_response is None or "result" not in subscribe_response:
   fail(f"missing subscribe response: {subscribe_response!r}")
@@ -360,6 +392,7 @@ if seqs != sorted(seqs):
   fail(f"expected events in increasing seq order, got: {seqs!r}")
 
 upserts = []
+state_upsert_seen = False
 notifs = []
 notif_methods = []
 for e in codexd_events:
@@ -371,6 +404,14 @@ for e in codexd_events:
     payload_runtime_id = runtime.get("runtimeId") or runtime.get("runtime_id")
     if payload_runtime_id != runtime_id:
       fail(f"runtimeUpsert runtimeId mismatch: {payload_runtime_id!r} != {runtime_id!r}")
+    active_turns = runtime.get("activeTurns") or []
+    for active_turn in active_turns:
+      if (
+        active_turn.get("turnId") == turn_id
+        and active_turn.get("latestLabel") == "Running e2e"
+        and active_turn.get("model") == "gpt-5-codex"
+      ):
+        state_upsert_seen = True
     upserts.append(e)
   if typ == "runtimeNotification":
     payload_runtime_id = payload.get("runtimeId") or payload.get("runtime_id")
@@ -382,6 +423,8 @@ for e in codexd_events:
 
 if not upserts:
   fail(f"expected runtimeUpsert in {len(codexd_events)} events")
+if not state_upsert_seen:
+  fail("expected runtime/updateState active turn summary in runtimeUpsert events")
 if not notifs:
   fail(f"expected runtimeNotification in {len(codexd_events)} events")
 if "turn/started" not in notif_methods:
@@ -394,6 +437,7 @@ if max(seqs) > subscribe_seq:
   fail(f"expected max(event.seq) <= subscribeSeq={subscribe_seq}, got: {seqs!r}")
 
 out = {
+  "hello": hello_result,
   "snapshotSeq": after_seq,
   "subscribeSeq": subscribe_seq,
   "eventCount": len(codexd_events),

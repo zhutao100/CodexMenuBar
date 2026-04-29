@@ -9,6 +9,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private lazy var statusMenu = StatusMenuController(model: model)
   private let appServerClient = AppServerClient()
   private let terminalLauncher = TerminalLauncher()
+  private lazy var statusWindowController = StatusWindowController(
+    model: model,
+    onOpenTerminal: { [weak self] workingDirectory in
+      self?.terminalLauncher.OpenTerminal(at: workingDirectory)
+    }
+  )
   private lazy var settingsWindowController = SettingsWindowController(
     model: settingsModel,
     onApplySocketOverride: { [weak self] socketPath in
@@ -26,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApplication.shared.setActivationPolicy(.accessory)
+    ConfigureMainMenu()
     ConfigureStatusMenu()
     ConfigureClient()
     if !IsUITestMode() {
@@ -43,6 +50,181 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     appServerClient.Stop()
   }
 
+  private func ConfigureMainMenu() {
+    let mainMenu = NSMenu(title: "CodexMenuBar")
+
+    let appMenu = AddSubmenu(title: "CodexMenuBar", to: mainMenu)
+    appMenu.addItem(
+      MenuItem(
+        title: "About CodexMenuBar",
+        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+        target: NSApp
+      ))
+    appMenu.addItem(.separator())
+
+    appMenu.addItem(
+      MenuItem(
+        title: "Settings...",
+        action: #selector(OnMenuSettings(_:)),
+        keyEquivalent: ",",
+        target: self
+      ))
+    appMenu.addItem(.separator())
+
+    let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+    let servicesMenu = NSMenu(title: "Services")
+    servicesItem.submenu = servicesMenu
+    appMenu.addItem(servicesItem)
+    NSApp.servicesMenu = servicesMenu
+    appMenu.addItem(.separator())
+
+    appMenu.addItem(
+      MenuItem(
+        title: "Hide CodexMenuBar",
+        action: #selector(NSApplication.hide(_:)),
+        keyEquivalent: "h",
+        target: NSApp
+      ))
+    appMenu.addItem(
+      MenuItem(
+        title: "Hide Others",
+        action: #selector(NSApplication.hideOtherApplications(_:)),
+        keyEquivalent: "h",
+        target: NSApp,
+        modifierMask: [.command, .option]
+      ))
+    appMenu.addItem(
+      MenuItem(
+        title: "Show All",
+        action: #selector(NSApplication.unhideAllApplications(_:)),
+        target: NSApp
+      ))
+    appMenu.addItem(.separator())
+
+    appMenu.addItem(
+      MenuItem(
+        title: "Quit CodexMenuBar",
+        action: #selector(OnMenuQuit(_:)),
+        keyEquivalent: "q",
+        target: self
+      ))
+
+    let fileMenu = AddSubmenu(title: "File", to: mainMenu)
+    fileMenu.addItem(
+      MenuItem(
+        title: "Close Window",
+        action: #selector(NSWindow.performClose(_:)),
+        keyEquivalent: "w"
+      ))
+
+    let editMenu = AddSubmenu(title: "Edit", to: mainMenu)
+    editMenu.addItem(MenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+    editMenu.addItem(
+      MenuItem(
+        title: "Redo",
+        action: Selector(("redo:")),
+        keyEquivalent: "z",
+        modifierMask: [.command, .shift]
+      ))
+
+    editMenu.addItem(.separator())
+    editMenu.addItem(MenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+    editMenu.addItem(
+      MenuItem(
+        title: "Copy",
+        action: #selector(NSText.copy(_:)),
+        keyEquivalent: "c"
+      ))
+    editMenu.addItem(
+      MenuItem(
+        title: "Paste",
+        action: #selector(NSText.paste(_:)),
+        keyEquivalent: "v"
+      ))
+    editMenu.addItem(
+      MenuItem(
+        title: "Paste and Match Style",
+        action: #selector(NSTextView.pasteAsPlainText(_:)),
+        keyEquivalent: "v",
+        modifierMask: [.command, .option, .shift]
+      ))
+
+    editMenu.addItem(MenuItem(title: "Delete", action: #selector(NSText.delete(_:))))
+    editMenu.addItem(.separator())
+    editMenu.addItem(
+      MenuItem(
+        title: "Select All",
+        action: #selector(NSText.selectAll(_:)),
+        keyEquivalent: "a"
+      ))
+
+    let viewMenu = AddSubmenu(title: "View", to: mainMenu)
+    viewMenu.addItem(
+      MenuItem(
+        title: "Status Center",
+        action: #selector(OnMenuStatusCenter(_:)),
+        target: self
+      ))
+    viewMenu.addItem(
+      MenuItem(
+        title: "Quick Start",
+        action: #selector(OnMenuQuickStart(_:)),
+        target: self
+      ))
+    viewMenu.addItem(
+      MenuItem(
+        title: "Reconnect codexd",
+        action: #selector(OnMenuReconnect(_:)),
+        target: self
+      ))
+
+    let windowMenu = AddSubmenu(title: "Window", to: mainMenu)
+    NSApp.windowsMenu = windowMenu
+
+    windowMenu.addItem(
+      MenuItem(
+        title: "Minimize",
+        action: #selector(NSWindow.performMiniaturize(_:)),
+        keyEquivalent: "m"
+      ))
+    windowMenu.addItem(
+      MenuItem(
+        title: "Zoom",
+        action: #selector(NSWindow.performZoom(_:))
+      ))
+    windowMenu.addItem(.separator())
+
+    windowMenu.addItem(
+      MenuItem(
+        title: "Bring All to Front",
+        action: #selector(NSApplication.arrangeInFront(_:)),
+        target: NSApp
+      ))
+
+    NSApp.mainMenu = mainMenu
+  }
+
+  private func AddSubmenu(title: String, to menu: NSMenu) -> NSMenu {
+    let item = NSMenuItem()
+    let submenu = NSMenu(title: title)
+    item.submenu = submenu
+    menu.addItem(item)
+    return submenu
+  }
+
+  private func MenuItem(
+    title: String,
+    action: Selector?,
+    keyEquivalent: String = "",
+    target: AnyObject? = nil,
+    modifierMask: NSEvent.ModifierFlags = .command
+  ) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+    item.target = target
+    item.keyEquivalentModifierMask = modifierMask
+    return item
+  }
+
   private func ConfigureStatusMenu() {
     statusMenu.ReconnectHandler = { [weak self] in
       self?.appServerClient.Restart()
@@ -55,6 +237,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     statusMenu.SettingsHandler = { [weak self] in
       self?.ShowSettingsWindow()
+    }
+    statusMenu.StatusCenterHandler = { [weak self] in
+      self?.ShowStatusWindow()
     }
     statusMenu.OpenTerminalHandler = { [weak self] workingDirectory in
       self?.terminalLauncher.OpenTerminal(at: workingDirectory)
@@ -95,6 +280,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self.model.InvalidateView()
     }
 
+    appServerClient.OnDiagnosticsChanged = { [weak self] diagnostics in
+      guard let self else {
+        return
+      }
+      self.model.codexdDiagnostics = diagnostics
+      self.model.InvalidateView()
+    }
+
     appServerClient.OnNotification = { [weak self] method, params in
       guard let self else {
         return
@@ -105,6 +298,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func ShowSettingsWindow() {
     settingsWindowController.Show()
+  }
+
+  private func ShowStatusWindow() {
+    statusWindowController.Show()
+  }
+
+  @objc
+  private func OnMenuSettings(_ sender: Any?) {
+    _ = sender
+    ShowSettingsWindow()
+  }
+
+  @objc
+  private func OnMenuStatusCenter(_ sender: Any?) {
+    _ = sender
+    ShowStatusWindow()
+  }
+
+  @objc
+  private func OnMenuQuickStart(_ sender: Any?) {
+    _ = sender
+    terminalLauncher.LaunchQuickStart()
+  }
+
+  @objc
+  private func OnMenuReconnect(_ sender: Any?) {
+    _ = sender
+    appServerClient.Restart()
+  }
+
+  @objc
+  private func OnMenuQuit(_ sender: Any?) {
+    _ = sender
+    NSApplication.shared.terminate(nil)
   }
 
   private func IsUITestMode() -> Bool {
@@ -148,6 +375,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     settingsModel.connectionState = .connected
     model.connectionState = .connected
+    model.codexdDiagnostics = CodexdDiagnostics(
+      resolvedSocketPath: "/tmp/codexd-fixture.sock",
+      connectedAt: now,
+      protocolVersion: 1,
+      capabilities: ["eventReplay", "runtimeState"],
+      lastEventSeq: 128
+    )
     model.SetEndpointIds([endpointId])
     turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
     turnStore.ApplyThreadSnapshot(

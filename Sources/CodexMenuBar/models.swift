@@ -189,6 +189,25 @@ struct RateLimitInfo: Equatable {
   var resetsAt: Date?
 }
 
+struct CodexdDiagnostics: Equatable, Sendable {
+  var resolvedSocketPath: String = CodexdSocketConfiguration.Resolve().resolvedSocketPath
+  var connectedAt: Date?
+  var protocolVersion: Int?
+  var capabilities: [String] = []
+  var lastEventSeq: Int?
+
+  var lastEventSeqText: String {
+    guard let lastEventSeq else {
+      return "none"
+    }
+    return "#\(lastEventSeq)"
+  }
+
+  var shortSocketPath: String {
+    resolvedSocketPath.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+  }
+}
+
 struct EndpointMetadata {
   var chatTitle: String?
   var promptPreview: String?

@@ -148,6 +148,17 @@ Track daemon-side work in `codex-rs/codexd/docs/dev_plans/menubar_status_hub_pre
 6. Add daemon health/status controls that do not mutate runtime work.
 7. Gate control actions behind daemon/runtime capabilities from the daemon prerequisite plan.
 
+## Implemented Slice
+
+- The popover now shows daemon diagnostics from `codexd/hello` and snapshot/event sequencing:
+  - protocol version;
+  - last event sequence;
+  - runtime count;
+  - resolved socket path.
+- A persistent Status Center window shows runtime navigation, selected turn details, and daemon diagnostics using the same state as the popover.
+- The UI remains read-only for daemon/runtime state; control actions are still gated on future runtime capabilities.
+- The daemon prerequisite plan has started with `codexd/hello`, summary-oriented `codexd/runtime/updateState`, and broader notification relay.
+
 ## Verification
 
 - Unit tests for snapshot reconciliation, event replay, missed-event handling, and unknown notifications.

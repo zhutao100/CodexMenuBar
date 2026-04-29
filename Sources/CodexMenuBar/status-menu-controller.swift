@@ -4,10 +4,10 @@ import SwiftUI
 
 private enum StatusMenuLayout {
   static let popoverWidth: CGFloat = 480
-  static let compactHeight: CGFloat = 260
-  static let activeHeight: CGFloat = 520
+  static let compactHeight: CGFloat = 300
+  static let activeHeight: CGFloat = 560
   static let contentWidth: CGFloat = 456
-  static let activeListMaxHeight: CGFloat = 414
+  static let activeListMaxHeight: CGFloat = 430
 }
 
 @MainActor
@@ -38,6 +38,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
   var ReconnectHandler: (() -> Void)?
   var QuickStartHandler: (() -> Void)?
   var SettingsHandler: (() -> Void)?
+  var StatusCenterHandler: (() -> Void)?
   var OpenTerminalHandler: ((String) -> Void)?
   var QuitHandler: (() -> Void)?
   var PopoverVisibilityChanged: ((Bool) -> Void)?
@@ -77,6 +78,10 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
         onOpenSettings: { [weak self] in
           self?.ClosePopover()
           self?.SettingsHandler?()
+        },
+        onOpenStatusCenter: { [weak self] in
+          self?.ClosePopover()
+          self?.StatusCenterHandler?()
         },
         onOpenTerminal: { [weak self] workingDirectory in
           self?.OpenTerminalHandler?(workingDirectory)
@@ -155,6 +160,13 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     )
     settingsItem.target = self
 
+    let statusCenterItem = NSMenuItem(
+      title: "Status Center...",
+      action: #selector(OnContextStatusCenter),
+      keyEquivalent: ""
+    )
+    statusCenterItem.target = self
+
     let quitItem = NSMenuItem(
       title: "Quit CodexMenuBar",
       action: #selector(OnContextQuit),
@@ -165,6 +177,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
     contextMenu.items = [
       reconnectItem,
       quickStartItem,
+      statusCenterItem,
       settingsItem,
       .separator(),
       quitItem,
@@ -351,6 +364,11 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
   }
 
   @objc
+  private func OnContextStatusCenter() {
+    StatusCenterHandler?()
+  }
+
+  @objc
   private func OnContextQuit() {
     QuitHandler?()
   }
@@ -375,6 +393,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
       _ = model.endpointRows.count
       _ = model.expandedEndpointIds.count
       _ = model.lowRateLimitWarningText
+      _ = model.codexdDiagnostics
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         self?.UpdateButton()
@@ -488,6 +507,7 @@ private struct StatusDropdownView: View {
   let onReconnectAll: () -> Void
   let onQuickStart: () -> Void
   let onOpenSettings: () -> Void
+  let onOpenStatusCenter: () -> Void
   let onOpenTerminal: (String) -> Void
   let onQuit: () -> Void
 
@@ -511,6 +531,26 @@ private struct StatusDropdownView: View {
       }
 
       Divider()
+
+      VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 6) {
+          Image(systemName: "server.rack")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          Text(model.daemonSummaryText)
+            .font(.caption)
+            .lineLimit(1)
+            .accessibilityIdentifier("status.daemonSummary")
+          Spacer(minLength: 4)
+        }
+
+        Text("Socket: \(model.codexdDiagnostics.shortSocketPath)")
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .truncationMode(.middle)
+          .accessibilityIdentifier("status.daemonSocket")
+      }
 
       if model.endpointRows.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
@@ -588,6 +628,8 @@ private struct StatusDropdownView: View {
       HStack(spacing: 8) {
         Button("Reconnect codexd", action: onReconnectAll)
           .accessibilityIdentifier("status.reconnect")
+        Button("Status Center", action: onOpenStatusCenter)
+          .accessibilityIdentifier("status.statusCenter")
         Button("Settings", action: onOpenSettings)
           .accessibilityIdentifier("status.settings")
         Spacer()

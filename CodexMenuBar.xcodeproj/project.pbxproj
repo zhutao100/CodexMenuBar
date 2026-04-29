@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0B7FAAE9CE795148E197BF17 /* terminal-launcher-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */; };
 		15828B42C1630948005B329A /* CodexMenuBarMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FEEFD4C844D846E248FD89 /* CodexMenuBarMain.swift */; };
+		1E501E0C5F6C73D7498B33C7 /* status-window-controller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3BBE322E2F1376EF97D69B5 /* status-window-controller.swift */; };
 		3BCFCD721F07647B18000194 /* terminal-launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13E0ACEDDE5320AD61E859E /* terminal-launcher.swift */; };
 		4BB21C36E043516EBA4D9806 /* app-server-client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F49D17DC71FDCE9C3E8A3E /* app-server-client.swift */; };
 		4BB58697DC074F70B2884432 /* turn-store-history-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F5C3C76FDE4BE37009A342F /* turn-store-history-tests.swift */; };
@@ -62,6 +63,7 @@
 		A5FF07238A5029FC257CE5BC /* menu-bar-ui-smoke-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "menu-bar-ui-smoke-tests.swift"; sourceTree = "<group>"; };
 		A8F9E96E6834EFE102E5F452 /* codexd-socket-configuration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "codexd-socket-configuration.swift"; sourceTree = "<group>"; };
 		BD3B2FA3C3246D682E69EDA5 /* turn-menu-row-view.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-menu-row-view.swift"; sourceTree = "<group>"; };
+		C3BBE322E2F1376EF97D69B5 /* status-window-controller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "status-window-controller.swift"; sourceTree = "<group>"; };
 		C4BF3E9E20F45FD084B8F762 /* CodexMenuBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodexMenuBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D13E0ACEDDE5320AD61E859E /* terminal-launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "terminal-launcher.swift"; sourceTree = "<group>"; };
 		D3C2479588FA2C080D879A69 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -122,6 +124,7 @@
 				886DBAB2B96CBB285D141779 /* models.swift */,
 				682B286B26D4990EF76A1D90 /* settings-window-controller.swift */,
 				7F4A2CFF39DC859A0326A22C /* status-menu-controller.swift */,
+				C3BBE322E2F1376EF97D69B5 /* status-window-controller.swift */,
 				D13E0ACEDDE5320AD61E859E /* terminal-launcher.swift */,
 				BD3B2FA3C3246D682E69EDA5 /* turn-menu-row-view.swift */,
 				78CA2874DC40F8B93A9EB459 /* turn-store.swift */,
@@ -269,6 +272,7 @@
 				864AF98C98159EFDB75E3B3C /* models.swift in Sources */,
 				C7796AEA5CC4B25A10CFE929 /* settings-window-controller.swift in Sources */,
 				5055F2D6EBB87BAF6D04D856 /* status-menu-controller.swift in Sources */,
+				1E501E0C5F6C73D7498B33C7 /* status-window-controller.swift in Sources */,
 				3BCFCD721F07647B18000194 /* terminal-launcher.swift in Sources */,
 				A033B68B6C072BC23F8E30E0 /* turn-menu-row-view.swift in Sources */,
 				BF2D9BA8FE5B433D2FA70330 /* turn-store.swift in Sources */,

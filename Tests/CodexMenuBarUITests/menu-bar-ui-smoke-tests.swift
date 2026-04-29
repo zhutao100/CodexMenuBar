@@ -15,7 +15,9 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
     let settingsButton = app.buttons["status.settings"]
     XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["status.daemonSummary"].exists)
     XCTAssertTrue(app.buttons["status.reconnect"].exists)
+    XCTAssertTrue(app.buttons["status.statusCenter"].exists)
     XCTAssertTrue(app.buttons["status.quit"].exists)
 
     settingsButton.click()
@@ -43,9 +45,52 @@ final class MenuBarUISmokeTests: XCTestCase {
     let header = app.staticTexts["status.headerTitle"]
     XCTAssertTrue(header.waitForExistence(timeout: 5))
     XCTAssertTrue(WaitForStringValue(of: header, equals: "Codex - 1 active"))
+    XCTAssertTrue(app.staticTexts["status.daemonSummary"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["turn.row.fixture-endpoint"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["status.settings"].exists)
     AttachScreenshot(named: "active-status-popover", app: app)
+  }
+
+  func testStatusCenterOpensFromPopover() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+    let daemonSummary = app.staticTexts["statusCenter.daemonSummary"]
+    XCTAssertTrue(daemonSummary.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: daemonSummary, equals: "1 runtime - event #128"))
+    AttachScreenshot(named: "status-center-window", app: app)
+  }
+
+  func testStatusCenterClosesWithCommandW() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+    app.typeKey("w", modifierFlags: .command)
+    XCTAssertTrue(WaitForNonExistence(of: statusWindow))
+  }
+
+  func testSettingsShortcutOpensSettingsWindow() throws {
+    let app = LaunchApp()
+    _ = try StatusItem(in: app)
+
+    app.activate()
+    app.typeKey(",", modifierFlags: .command)
+
+    XCTAssertTrue(SettingsWindow(in: app).waitForExistence(timeout: 5))
   }
 
   func testStatusContextMenuLaunchHarnessShowsMenuItems() throws {
@@ -56,6 +101,8 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(
       try ContextMenuItem(named: "Reconnect codexd", app: app).waitForExistence(timeout: 5))
     XCTAssertTrue(try ContextMenuItem(named: "Quick Start", app: app).waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      try ContextMenuItem(named: "Status Center...", app: app).waitForExistence(timeout: 5))
     XCTAssertTrue(try ContextMenuItem(named: "Settings...", app: app).waitForExistence(timeout: 5))
     XCTAssertTrue(
       try ContextMenuItem(named: "Quit CodexMenuBar", app: app).waitForExistence(timeout: 5))

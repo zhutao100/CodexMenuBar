@@ -17,6 +17,7 @@ private final class AppServerClientCallbacks: @unchecked Sendable {
   var OnNotification: ((String, [String: Any]) -> Void)?
   var OnStateChange: ((AppServerConnectionState) -> Void)?
   var OnEndpointIdsChanged: (([String]) -> Void)?
+  var OnDiagnosticsChanged: ((CodexdDiagnostics) -> Void)?
 }
 
 // Concurrency contract:
@@ -43,6 +44,12 @@ final class AppServerClient: @unchecked Sendable {
     set { callbacks.OnEndpointIdsChanged = newValue }
   }
 
+  @MainActor
+  var OnDiagnosticsChanged: ((CodexdDiagnostics) -> Void)? {
+    get { callbacks.OnDiagnosticsChanged }
+    set { callbacks.OnDiagnosticsChanged = newValue }
+  }
+
   private let workQueue = DispatchQueue(label: "com.openai.codex.menubar.codexd")
 
   private var socketFD: Int32 = -1
@@ -62,6 +69,7 @@ final class AppServerClient: @unchecked Sendable {
   private var knownEndpointIds = Set<String>()
   private var summaryKnownEndpointIds = Set<String>()
   private var lastDispatchedEndpointIds: [String] = []
+  private var diagnostics = CodexdDiagnostics()
 
   func Start() {
     workQueue.async { [weak self] in
@@ -114,6 +122,7 @@ final class AppServerClient: @unchecked Sendable {
     knownEndpointIds.removeAll()
     summaryKnownEndpointIds.removeAll()
     DispatchEndpointIds([])
+    ResetDiagnosticsOnQueue(connectedAt: nil)
 
     if emitState {
       EmitState(.disconnected)
@@ -135,6 +144,7 @@ final class AppServerClient: @unchecked Sendable {
     knownEndpointIds.removeAll()
     summaryKnownEndpointIds.removeAll()
     DispatchEndpointIds([])
+    ResetDiagnosticsOnQueue(connectedAt: nil)
     DisconnectOnQueue(notify: true)
     ConnectIfNeededOnQueue()
   }
@@ -203,7 +213,18 @@ final class AppServerClient: @unchecked Sendable {
 
     hasConnectedOnce = true
     EmitState(.connected)
+    ResetDiagnosticsOnQueue(connectedAt: Date())
+    RequestHelloOnQueue()
     RequestSnapshotOnQueue()
+  }
+
+  private func RequestHelloOnQueue() {
+    SendRequestOnQueue(method: "codexd/hello", params: [:]) { [weak self] result in
+      guard let self else {
+        return
+      }
+      self.HandleHelloOnQueue(result)
+    }
   }
 
   private func RequestSnapshotOnQueue() {
@@ -232,9 +253,20 @@ final class AppServerClient: @unchecked Sendable {
     }
   }
 
+  private func HandleHelloOnQueue(_ result: [String: Any]) {
+    diagnostics.protocolVersion = IntValue(result["protocolVersion"])
+    diagnostics.capabilities = result["capabilities"] as? [String] ?? []
+    if let seq = IntValue(result["seq"]) {
+      diagnostics.lastEventSeq = seq
+    }
+    EmitDiagnostics()
+  }
+
   private func HandleSnapshotOnQueue(_ result: [String: Any]) {
     if let seq = IntValue(result["seq"]) {
       lastSeq = seq
+      diagnostics.lastEventSeq = seq
+      EmitDiagnostics()
     }
 
     let runtimes = result["runtimes"] as? [[String: Any]] ?? []
@@ -318,6 +350,8 @@ final class AppServerClient: @unchecked Sendable {
   private func HandleCodexdEventOnQueue(_ params: [String: Any]) {
     if let seq = IntValue(params["seq"]) {
       lastSeq = seq
+      diagnostics.lastEventSeq = seq
+      EmitDiagnostics()
     }
 
     guard let event = params["event"] as? [String: Any],
@@ -582,6 +616,22 @@ final class AppServerClient: @unchecked Sendable {
     let callbacks = callbacks
     Task { @MainActor in
       callbacks.OnStateChange?(nextState)
+    }
+  }
+
+  private func ResetDiagnosticsOnQueue(connectedAt: Date?) {
+    diagnostics = CodexdDiagnostics()
+    diagnostics.resolvedSocketPath = CodexdSocketPath()
+    diagnostics.connectedAt = connectedAt
+    diagnostics.lastEventSeq = lastSeq
+    EmitDiagnostics()
+  }
+
+  private func EmitDiagnostics() {
+    let callbacks = callbacks
+    let diagnostics = diagnostics
+    Task { @MainActor in
+      callbacks.OnDiagnosticsChanged?(diagnostics)
     }
   }
 

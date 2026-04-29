@@ -10,7 +10,9 @@ It connects to a single local `codexd` daemon, and renders authoritative active 
 
 - Menu bar icon state for connected/running/error.
 - Left-click popover and right-click context menu from the status item.
+- Persistent Status Center window for browsing current runtimes and turn details.
 - Settings window for session-only `codexd` socket overrides and reconnects.
+- Daemon diagnostics in the popover, including socket path, protocol version, event sequence, and runtime count.
 - One row per active turn.
 - Terminal-style progress semantics:
   - working status
@@ -91,6 +93,7 @@ It also uses `item/started` and `item/completed` as a fallback to synthesize tra
 
 `codexd` receives runtime updates from Codex runtimes and provides:
 
+- `codexd/hello` for protocol/capability discovery.
 - `codexd/snapshot` for current state.
 - `codexd/event` notifications for live changes.
 

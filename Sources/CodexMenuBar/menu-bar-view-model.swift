@@ -12,6 +12,7 @@ final class MenuBarViewModel {
   let turnStore: TurnStore
 
   var connectionState: AppServerConnectionState = .disconnected
+  var codexdDiagnostics = CodexdDiagnostics()
   var now: Date = Date()
   var isPopoverShown: Bool = false
   var viewRefreshToken: Int = 0
@@ -75,6 +76,15 @@ final class MenuBarViewModel {
     case .disconnected:
       return "Codex - disconnected"
     }
+  }
+
+  var runtimeCount: Int {
+    endpointRows.count
+  }
+
+  var daemonSummaryText: String {
+    let runtimeLabel = runtimeCount == 1 ? "1 runtime" : "\(runtimeCount) runtimes"
+    return "\(runtimeLabel) - event \(codexdDiagnostics.lastEventSeqText)"
   }
 
   func SetEndpointIds(_ endpointIds: [String]) {

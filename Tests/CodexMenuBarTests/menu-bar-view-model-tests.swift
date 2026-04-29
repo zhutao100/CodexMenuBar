@@ -158,4 +158,20 @@ final class MenuBarViewModelTests: XCTestCase {
     store.UpdateRateLimits(rateLimits: RateLimitInfo(remaining: 11, limit: 100, resetsAt: nil))
     XCTAssertNil(model.lowRateLimitWarningText)
   }
+
+  func testDaemonSummaryUsesDiagnosticsAndRuntimeCount() {
+    let store = TurnStore()
+    let model = MenuBarViewModel(turnStore: store)
+    model.codexdDiagnostics = CodexdDiagnostics(
+      resolvedSocketPath: "/tmp/codexd.sock",
+      connectedAt: Date(timeIntervalSince1970: 1_760_000_000),
+      protocolVersion: 1,
+      capabilities: ["eventReplay", "runtimeState"],
+      lastEventSeq: 42
+    )
+
+    model.SetEndpointIds(["pid:1", "pid:2"])
+
+    XCTAssertEqual(model.daemonSummaryText, "2 runtimes - event #42")
+  }
 }
