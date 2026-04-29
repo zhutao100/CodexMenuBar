@@ -36,3 +36,8 @@ This repo uses `prek` to run `.pre-commit-config.yaml` hooks for `CodexMenuBar/*
 
 - One-time hook setup: `git config core.hooksPath .githooks && prek prepare-hooks`
 - Run on all tracked files (scoped to `CodexMenuBar/**` by config): `prek run --all-files`
+
+## Development plans
+
+- App expansion plans live under `docs/dev_plans/`.
+- Keep daemon prerequisite work aligned with `codex-rs/codexd/docs/dev_plans/` when a UI plan depends on new `codexd` protocol or runtime-control behavior.
