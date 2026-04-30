@@ -12,6 +12,7 @@ It connects to a single local `codexd` daemon, and renders authoritative active 
 - Left-click popover and right-click context menu from the status item.
 - Persistent Status Center window for browsing current runtimes and turn details.
 - Settings window for session-only `codexd` socket overrides and reconnects.
+- Launch-at-login control in Settings, backed by `SMAppService.mainApp` for signed app bundles.
 - Daemon diagnostics in the popover, including socket path, protocol version, event sequence, and runtime count.
 - One row per active turn.
 - Terminal-style progress semantics:
@@ -81,7 +82,7 @@ Example:
 CODEXD_SOCKET_PATH=/tmp/codexd.sock swift run CodexMenuBar
 ```
 
-The Settings window also includes a macOS 26 visibility note: if the status item is hidden, enable `CodexMenuBar` under `System Settings -> Menu Bar`.
+The Settings window also includes a launch-at-login toggle and a macOS 26 visibility note: if the status item is hidden, enable `CodexMenuBar` under `System Settings -> Menu Bar`.
 
 When connected, the app subscribes to:
 
@@ -122,6 +123,10 @@ This repo supports optional local configuration under the `config/` directory. T
 `scripts/e2e_codexd.sh` looks for `external_projects->codex->local_path` inside this file to locate a developer-built `codex` checkout. If the file or value is missing the script will print a warning and fall back to the repository parent directory.
 
 `cp config/external-projects.example.yaml config/external-projects.local.yaml` and update the `local_path`.
+
+## Release security
+
+Local builds are unsigned. Release signing, App Sandbox, Hardened Runtime, notarization, and launch-at-login constraints are tracked in `docs/release_security.md`.
 
 ## Acknowledgments
 

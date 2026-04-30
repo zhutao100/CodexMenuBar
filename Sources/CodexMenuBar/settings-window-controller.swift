@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 
 private enum SettingsWindowLayout {
-  static let initialSize = NSSize(width: 560, height: 480)
+  static let initialSize = NSSize(width: 560, height: 520)
   static let minSize = NSSize(width: 520, height: 360)
   static let maxContentWidth: CGFloat = 760
 }
@@ -11,11 +11,47 @@ private enum SettingsWindowLayout {
 @MainActor
 @Observable
 final class SettingsViewModel {
+  @ObservationIgnored private let loginItemManager: LoginItemManaging
+
   var sessionSocketPathOverride: String = ""
   var connectionState: AppServerConnectionState = .disconnected
+  var launchAtLoginStatus: LoginItemStatus = .notRegistered
+  var launchAtLoginError: String?
+
+  init(loginItemManager: LoginItemManaging = ServiceManagementLoginItemManager()) {
+    self.loginItemManager = loginItemManager
+    RefreshLaunchAtLoginStatus()
+  }
 
   var effectiveConfiguration: CodexdSocketConfiguration {
     CodexdSocketConfiguration.Resolve(sessionOverride: sessionSocketPathOverride)
+  }
+
+  var isLaunchAtLoginRequested: Bool {
+    switch launchAtLoginStatus {
+    case .enabled, .requiresApproval:
+      return true
+    case .notRegistered, .notFound:
+      return false
+    }
+  }
+
+  var launchAtLoginStatusTitle: String {
+    if let launchAtLoginError {
+      return launchAtLoginError
+    }
+
+    switch launchAtLoginStatus {
+    case .enabled:
+      return "CodexMenuBar will open when you log in."
+    case .requiresApproval:
+      return "Approve CodexMenuBar in System Settings to finish enabling launch at login."
+    case .notRegistered:
+      return "CodexMenuBar will not open automatically at login."
+    case .notFound:
+      return
+        "macOS could not find this app as a login item. Install and sign the app bundle, then try again."
+    }
   }
 
   var connectionStateTitle: String {
@@ -45,16 +81,38 @@ final class SettingsViewModel {
       return "circle.dashed"
     }
   }
+
+  func RefreshLaunchAtLoginStatus() {
+    launchAtLoginStatus = loginItemManager.Status
+  }
+
+  func SetLaunchAtLoginEnabled(_ isEnabled: Bool) {
+    do {
+      try loginItemManager.SetEnabled(isEnabled)
+      launchAtLoginError = nil
+    } catch {
+      launchAtLoginError = "Could not update launch at login: \(error.localizedDescription)"
+    }
+
+    RefreshLaunchAtLoginStatus()
+  }
+
+  func OpenLoginItemsSettings() {
+    loginItemManager.OpenSystemSettingsLoginItems()
+  }
 }
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
+  private let model: SettingsViewModel
+
   init(
     model: SettingsViewModel,
     onApplySocketOverride: @escaping (String?) -> Void,
     onReconnect: @escaping () -> Void,
     onQuickStart: @escaping () -> Void
   ) {
+    self.model = model
     let contentView = SettingsView(
       model: model,
       onApplySocketOverride: onApplySocketOverride,
@@ -77,6 +135,7 @@ final class SettingsWindowController: NSWindowController {
   }
 
   func Show() {
+    model.RefreshLaunchAtLoginStatus()
     showWindow(nil)
     window?.center()
     NSApp.activate(ignoringOtherApps: true)
@@ -155,6 +214,33 @@ private struct SettingsView: View {
               .font(.caption)
               .foregroundStyle(.primary)
               .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
+
+          SettingsSection(title: "Startup") {
+            VStack(alignment: .leading, spacing: 8) {
+              Toggle(
+                "Open CodexMenuBar at login",
+                isOn: Binding(
+                  get: { model.isLaunchAtLoginRequested },
+                  set: { model.SetLaunchAtLoginEnabled($0) }
+                )
+              )
+              .accessibilityIdentifier("settings.launchAtLogin")
+
+              Text(model.launchAtLoginStatusTitle)
+                .font(.caption)
+                .foregroundStyle(model.launchAtLoginError == nil ? Color.primary : Color.red)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("settings.launchAtLoginStatus")
+
+              if model.launchAtLoginStatus == .requiresApproval {
+                Button("Open Login Items Settings") {
+                  model.OpenLoginItemsSettings()
+                }
+                .accessibilityIdentifier("settings.openLoginItems")
+              }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
           }

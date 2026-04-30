@@ -45,3 +45,4 @@ This repo uses `prek` to run `.pre-commit-config.yaml` hooks for `CodexMenuBar/*
 
 - App expansion plans live under `docs/dev_plans/`.
 - Keep daemon prerequisite work aligned with `codex-rs/codexd/docs/dev_plans/` when a UI plan depends on new `codexd` protocol or runtime-control behavior.
+- Release signing, App Sandbox, Hardened Runtime, notarization, and launch-at-login decisions live in `docs/release_security.md`.

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0B7FAAE9CE795148E197BF17 /* terminal-launcher-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */; };
 		15828B42C1630948005B329A /* CodexMenuBarMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FEEFD4C844D846E248FD89 /* CodexMenuBarMain.swift */; };
+		1B63BDAC583D18A8CD254B6A /* settings-view-model-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 441EB267B7F3F0EB16AC5B90 /* settings-view-model-tests.swift */; };
 		1E501E0C5F6C73D7498B33C7 /* status-window-controller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3BBE322E2F1376EF97D69B5 /* status-window-controller.swift */; };
 		3BCFCD721F07647B18000194 /* terminal-launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13E0ACEDDE5320AD61E859E /* terminal-launcher.swift */; };
 		4BB21C36E043516EBA4D9806 /* app-server-client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F49D17DC71FDCE9C3E8A3E /* app-server-client.swift */; };
@@ -26,6 +27,7 @@
 		B3B64FC1FC8FFE9508084379 /* codexd-socket-configuration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F9E96E6834EFE102E5F452 /* codexd-socket-configuration.swift */; };
 		BF2D9BA8FE5B433D2FA70330 /* turn-store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78CA2874DC40F8B93A9EB459 /* turn-store.swift */; };
 		C7796AEA5CC4B25A10CFE929 /* settings-window-controller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682B286B26D4990EF76A1D90 /* settings-window-controller.swift */; };
+		C7BBA209DAD72F4E3077B71A /* login-item-manager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27CE6A9998F118CF1DBC0BE7 /* login-item-manager.swift */; };
 		E6C42C977B850D09DB995995 /* svgs in Resources */ = {isa = PBXBuildFile; fileRef = F132C795B266D59244279110 /* svgs */; };
 /* End PBXBuildFile section */
 
@@ -48,6 +50,8 @@
 
 /* Begin PBXFileReference section */
 		1F5C3C76FDE4BE37009A342F /* turn-store-history-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-store-history-tests.swift"; sourceTree = "<group>"; };
+		27CE6A9998F118CF1DBC0BE7 /* login-item-manager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "login-item-manager.swift"; sourceTree = "<group>"; };
+		441EB267B7F3F0EB16AC5B90 /* settings-view-model-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "settings-view-model-tests.swift"; sourceTree = "<group>"; };
 		44FEEFD4C844D846E248FD89 /* CodexMenuBarMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexMenuBarMain.swift; sourceTree = "<group>"; };
 		52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "terminal-launcher-tests.swift"; sourceTree = "<group>"; };
 		552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "codexd-socket-configuration-tests.swift"; sourceTree = "<group>"; };
@@ -78,6 +82,7 @@
 			children = (
 				552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */,
 				9907DD2492503B856D3F71BC /* menu-bar-view-model-tests.swift */,
+				441EB267B7F3F0EB16AC5B90 /* settings-view-model-tests.swift */,
 				52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */,
 				1F5C3C76FDE4BE37009A342F /* turn-store-history-tests.swift */,
 			);
@@ -120,6 +125,7 @@
 				88F49D17DC71FDCE9C3E8A3E /* app-server-client.swift */,
 				A8F9E96E6834EFE102E5F452 /* codexd-socket-configuration.swift */,
 				44FEEFD4C844D846E248FD89 /* CodexMenuBarMain.swift */,
+				27CE6A9998F118CF1DBC0BE7 /* login-item-manager.swift */,
 				DCCA46335FC47E30B60DBE37 /* menu-bar-view-model.swift */,
 				886DBAB2B96CBB285D141779 /* models.swift */,
 				682B286B26D4990EF76A1D90 /* settings-window-controller.swift */,
@@ -268,6 +274,7 @@
 				AC30CDEE24AA447CF14489E6 /* app-delegate.swift in Sources */,
 				4BB21C36E043516EBA4D9806 /* app-server-client.swift in Sources */,
 				B3B64FC1FC8FFE9508084379 /* codexd-socket-configuration.swift in Sources */,
+				C7BBA209DAD72F4E3077B71A /* login-item-manager.swift in Sources */,
 				860BAE53672CCFF76D8DDA7C /* menu-bar-view-model.swift in Sources */,
 				864AF98C98159EFDB75E3B3C /* models.swift in Sources */,
 				C7796AEA5CC4B25A10CFE929 /* settings-window-controller.swift in Sources */,
@@ -286,6 +293,7 @@
 				6BD69309045BB6DC49DFB8C9 /* SandboxTestingBootstrap.c in Sources */,
 				90EB39AD9EBFF1A243C72036 /* codexd-socket-configuration-tests.swift in Sources */,
 				5E5FAF31C17D8820D39CEB67 /* menu-bar-view-model-tests.swift in Sources */,
+				1B63BDAC583D18A8CD254B6A /* settings-view-model-tests.swift in Sources */,
 				0B7FAAE9CE795148E197BF17 /* terminal-launcher-tests.swift in Sources */,
 				4BB58697DC074F70B2884432 /* turn-store-history-tests.swift in Sources */,
 			);
@@ -385,6 +393,7 @@
 				CODE_SIGNING_ALLOWED = NO;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;

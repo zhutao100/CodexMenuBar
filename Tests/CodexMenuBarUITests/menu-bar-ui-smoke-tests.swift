@@ -193,6 +193,10 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertLessThanOrEqual(settingsWindow.frame.width, 700)
     XCTAssertGreaterThanOrEqual(settingsWindow.frame.height, 360)
     XCTAssertLessThanOrEqual(settingsWindow.frame.height, 560)
+    XCTAssertTrue(
+      settingsWindow.descendants(matching: .any)["settings.launchAtLogin"]
+        .waitForExistence(timeout: 5))
+    XCTAssertTrue(settingsWindow.staticTexts["settings.launchAtLoginStatus"].exists)
     AttachScreenshot(named: "settings-window-compact", app: app)
   }
 

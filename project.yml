@@ -10,6 +10,9 @@ settings:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     CODE_SIGNING_ALLOWED: "NO"
+  configs:
+    Release:
+      ENABLE_HARDENED_RUNTIME: "YES"
 
 targets:
   CodexMenuBar:
