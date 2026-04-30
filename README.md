@@ -103,7 +103,7 @@ If the menu bar disconnects, it reconnects and re-fetches snapshot state before 
 ## Verify
 
 - Xcode build + unit tests (low-noise logs): `scripts/verify_fast.sh`
-- GUI smoke + agent-safe evidence run (`.xcresult`): `scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots redact-suspect --delete-raw-attachments`
+- GUI smoke + agent-safe evidence run (`.xcresult`): `scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots keep --delete-raw-attachments`
 - `codexd` end-to-end smoke: `scripts/e2e_codexd.sh`
 - `codexd` smoke using the installed `codex` on `PATH`: `scripts/e2e_codexd.sh --use-codex-on-path`
 
@@ -112,6 +112,7 @@ Notes:
 - Unit tests are guarded by an in-process Seatbelt sandbox; set `SEATBELT_SANDBOX_DISABLE=1` to bypass.
 - For `scripts/ui/ui_loop.sh`, set `VERBOSE=1` to stream full `xcodebuild` output.
 - UI tests include deterministic launch harnesses for Settings, the context menu, the empty popover, and an active-turn fixture via `--fixture active-turn`.
+- UI screenshot attachments are app-window screenshots or status-surface crops; `--system-attachment-lifetime keepNever` suppresses automatic full-screen XCTest screenshots.
 - If macOS blocks UI tests with an "XCTest is trying to Enable UI Automation" password prompt, keep the failed `.xcresult`, capture attribution with `scripts/macos/tcc_attribution_tail.sh`, and approve the OS permission before treating the GUI loop as authoritative. Manual `screencapture` evidence can be used as a fallback only.
 
 ## Configuration

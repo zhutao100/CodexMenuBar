@@ -58,11 +58,11 @@ Examples:
     --destination 'platform=macOS' --reuse-build --derived-data /tmp/ui-loop/DerivedData
 
   # Agent-safe macOS UI loop: suppress automatic full-screen XCTest screenshots,
-  # then redact any large attachments that still appear during export.
+  # then keep explicit window/cropped attachments authored by the UI tests.
   scripts/ui/ui_loop.sh --workspace App.xcworkspace --scheme App --test-plan Smoke \
     --destination 'platform=macOS' --reuse-build \
     --system-attachment-lifetime keepNever \
-    --sanitize-screenshots redact-suspect --delete-raw-attachments
+    --sanitize-screenshots keep --delete-raw-attachments
 EOF
 }
 

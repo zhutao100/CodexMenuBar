@@ -7,7 +7,7 @@
 - Verify (sandboxed, auto Xcode/SwiftPM): `./scripts/verify_fast.sh`
 - Run (Xcode): `open CodexMenuBar.xcodeproj`
 - Run (SwiftPM): `swift run CodexMenuBar`
-- Evidence run (agent-safe xcresult): `./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots redact-suspect --delete-raw-attachments`
+- Evidence run (agent-safe xcresult): `./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots keep --delete-raw-attachments`
 - E2E codexd smoke (artifacts): `./scripts/e2e_codexd.sh`
 - E2E codexd smoke using installed `codex`: `./scripts/e2e_codexd.sh --use-codex-on-path`
 

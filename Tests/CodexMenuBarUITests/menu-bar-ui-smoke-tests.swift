@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 @MainActor
@@ -358,21 +359,92 @@ final class MenuBarUISmokeTests: XCTestCase {
   }
 
   private func AttachScreenshot(named name: String, app: XCUIApplication) {
-    let screenshot: XCUIScreenshot
     let candidates = [
       app.windows["Codex Status Center"],
       app.windows["CodexMenuBar Settings"],
       app.windows.firstMatch,
     ]
     if let element = candidates.first(where: { $0.exists }) {
-      screenshot = element.screenshot()
-    } else {
-      screenshot = app.screenshot()
+      let attachment = XCTAttachment(screenshot: element.screenshot())
+      attachment.name = name
+      attachment.lifetime = .keepAlways
+      add(attachment)
+      return
     }
 
-    let attachment = XCTAttachment(screenshot: screenshot)
+    if let croppedStatusSurface = CroppedStatusSurfaceScreenshot(app: app) {
+      let attachment = XCTAttachment(
+        data: croppedStatusSurface, uniformTypeIdentifier: "public.png")
+      attachment.name = name
+      attachment.lifetime = .keepAlways
+      add(attachment)
+      return
+    }
+
+    let attachment = XCTAttachment(screenshot: app.screenshot())
     attachment.name = name
     attachment.lifetime = .keepAlways
     add(attachment)
+  }
+
+  private func CroppedStatusSurfaceScreenshot(app: XCUIApplication) -> Data? {
+    let cropElements = [
+      app.staticTexts["status.headerTitle"],
+      app.staticTexts["status.daemonSummary"],
+      app.staticTexts["status.daemonSocket"],
+      app.buttons["turn.row.fixture-endpoint"],
+      app.buttons["status.quickStart"],
+      app.buttons["status.reconnect"],
+      app.buttons["status.statusCenter"],
+      app.buttons["status.settings"],
+      app.buttons["status.quit"],
+    ].filter { $0.exists && !$0.frame.isEmpty }
+
+    guard !cropElements.isEmpty else {
+      return nil
+    }
+
+    var cropFrame = cropElements.reduce(CGRect.null) { partial, element in
+      partial.union(element.frame)
+    }
+    cropFrame = cropFrame.insetBy(dx: -24, dy: -24)
+
+    let screenshot = app.screenshot()
+    guard
+      let bitmap = NSBitmapImageRep(data: screenshot.pngRepresentation),
+      let image = bitmap.cgImage,
+      let screenFrame = NSScreen.main?.frame
+    else {
+      return nil
+    }
+
+    let screenBounds = CGRect(origin: .zero, size: screenFrame.size)
+    cropFrame = cropFrame.intersection(screenBounds)
+    guard !cropFrame.isNull, !cropFrame.isEmpty else {
+      return nil
+    }
+
+    let scaleX = CGFloat(image.width) / screenFrame.width
+    let scaleY = CGFloat(image.height) / screenFrame.height
+    let pixelBounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+    let pixelCrop = CGRect(
+      x: floor(cropFrame.minX * scaleX),
+      y: floor(cropFrame.minY * scaleY),
+      width: ceil(cropFrame.width * scaleX),
+      height: ceil(cropFrame.height * scaleY)
+    )
+    .integral
+    .intersection(pixelBounds)
+
+    guard
+      !pixelCrop.isNull,
+      !pixelCrop.isEmpty,
+      let cropped = image.cropping(to: pixelCrop)
+    else {
+      return nil
+    }
+
+    let croppedBitmap = NSBitmapImageRep(cgImage: cropped)
+    return croppedBitmap.representation(using: .png, properties: [:])
   }
 }

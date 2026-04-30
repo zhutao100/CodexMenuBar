@@ -173,7 +173,7 @@ Track daemon-side work in `codex-rs/codexd/docs/dev_plans/menubar_status_hub_pre
 - Existing commands:
   - `./scripts/verify_fast.sh`;
   - `./scripts/e2e_codexd.sh`;
-  - `./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots redact-suspect --delete-raw-attachments`.
+  - `./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots keep --delete-raw-attachments`.
 
 ## Prerequisite Decision
 
