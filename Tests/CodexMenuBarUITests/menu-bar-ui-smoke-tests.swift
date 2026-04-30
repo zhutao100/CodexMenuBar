@@ -14,11 +14,13 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
     let settingsButton = app.buttons["status.settings"]
+    let reconnectButton = app.buttons["status.reconnect"]
     XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["status.daemonSummary"].exists)
-    XCTAssertTrue(app.buttons["status.reconnect"].exists)
+    XCTAssertTrue(reconnectButton.exists)
     XCTAssertTrue(app.buttons["status.statusCenter"].exists)
     XCTAssertTrue(app.buttons["status.quit"].exists)
+    XCTAssertLessThanOrEqual(reconnectButton.frame.width, 210)
 
     settingsButton.click()
     XCTAssertTrue(SettingsWindow(in: app).waitForExistence(timeout: 5))

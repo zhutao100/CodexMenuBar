@@ -98,6 +98,18 @@ private struct StatusCenterView: View {
 
   @ViewBuilder
   private var SidebarView: some View {
+    ZStack(alignment: .trailing) {
+      SidebarContent
+      SidebarEdgeGradient
+    }
+    .frame(width: SidebarWidth, alignment: .leading)
+    .clipped()
+    .background(Color(nsColor: NSColor.windowBackgroundColor))
+    .animation(SidebarAnimation, value: isSidebarCollapsed)
+  }
+
+  @ViewBuilder
+  private var SidebarContent: some View {
     if isSidebarCollapsed {
       VStack {
         StatusCenterSidebarToggleButton(isCollapsed: true, action: ToggleSidebar)
@@ -106,7 +118,7 @@ private struct StatusCenterView: View {
         Spacer()
       }
       .frame(width: StatusWindowLayout.collapsedSidebarWidth)
-      .background(Color(nsColor: NSColor.windowBackgroundColor))
+      .transition(.opacity.combined(with: .move(edge: .leading)))
     } else {
       VStack(alignment: .leading, spacing: 8) {
         HStack(spacing: 8) {
@@ -136,8 +148,29 @@ private struct StatusCenterView: View {
           .padding(.bottom, 10)
       }
       .frame(width: StatusWindowLayout.sidebarWidth)
-      .background(Color(nsColor: NSColor.windowBackgroundColor))
+      .transition(.opacity.combined(with: .move(edge: .leading)))
     }
+  }
+
+  private var SidebarEdgeGradient: some View {
+    LinearGradient(
+      colors: [
+        Color(nsColor: NSColor.windowBackgroundColor).opacity(0),
+        Color(nsColor: NSColor.separatorColor).opacity(isSidebarCollapsed ? 0.38 : 0.2),
+      ],
+      startPoint: .leading,
+      endPoint: .trailing
+    )
+    .frame(width: isSidebarCollapsed ? 14 : 28)
+    .allowsHitTesting(false)
+  }
+
+  private var SidebarWidth: CGFloat {
+    isSidebarCollapsed ? StatusWindowLayout.collapsedSidebarWidth : StatusWindowLayout.sidebarWidth
+  }
+
+  private var SidebarAnimation: Animation {
+    .easeInOut(duration: 0.24)
   }
 
   @ViewBuilder
@@ -196,7 +229,9 @@ private struct StatusCenterView: View {
   }
 
   private func ToggleSidebar() {
-    isSidebarCollapsed.toggle()
+    withAnimation(SidebarAnimation) {
+      isSidebarCollapsed.toggle()
+    }
   }
 }
 

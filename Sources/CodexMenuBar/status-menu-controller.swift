@@ -6,10 +6,11 @@ private enum StatusMenuLayout {
   static let popoverWidth: CGFloat = 480
   static let compactHeight: CGFloat = 330
   static let activeHeight: CGFloat = 590
-  static let contentWidth: CGFloat = 456
+  static let outerPadding: CGFloat = 12
+  static let contentWidth: CGFloat = popoverWidth - (outerPadding * 2)
   static let activeListMaxHeight: CGFloat = 430
   static let footerSpacing: CGFloat = 8
-  static let footerButtonWidth: CGFloat = (contentWidth - footerSpacing) / 2
+  static let footerHorizontalInset: CGFloat = 24
 }
 
 @MainActor
@@ -634,8 +635,8 @@ private struct StatusDropdownView: View {
         onQuit: onQuit
       )
     }
-    .padding(12)
-    .frame(width: StatusMenuLayout.contentWidth)
+    .padding(StatusMenuLayout.outerPadding)
+    .frame(width: StatusMenuLayout.popoverWidth, alignment: .topLeading)
   }
 
   private func RateLimitText(rateLimits: RateLimitInfo, remaining: Int, limit: Int) -> String {
@@ -696,6 +697,7 @@ private struct StatusDropdownFooter: View {
         )
       }
     }
+    .padding(.horizontal, StatusMenuLayout.footerHorizontalInset)
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
@@ -715,7 +717,7 @@ private struct StatusDropdownFooterButton: View {
     }
     .buttonStyle(.bordered)
     .controlSize(.small)
-    .frame(width: StatusMenuLayout.footerButtonWidth)
+    .frame(maxWidth: .infinity)
     .accessibilityIdentifier(accessibilityIdentifier)
   }
 }
