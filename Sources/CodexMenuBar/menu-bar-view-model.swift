@@ -14,7 +14,6 @@ final class MenuBarViewModel {
   var connectionState: AppServerConnectionState = .disconnected
   var codexdDiagnostics = CodexdDiagnostics()
   var now: Date = Date()
-  var isPopoverShown: Bool = false
   var viewRefreshToken: Int = 0
   var expandedEndpointIds: Set<String> = []
   var expandedRunKeysByEndpoint: [String: Set<String>] = [:]

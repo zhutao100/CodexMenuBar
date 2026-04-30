@@ -23,6 +23,8 @@ UI tests use launch harnesses (`--start-screen Settings`, `--open-status-surface
 
 `AppDelegate` owns the programmatic main menu for standard macOS command shortcuts (`⌘W`, `⌘,`, edit commands, window commands). Keep new persistent windows on the responder chain so these shortcuts continue to work.
 
+`AppDelegate` also owns the live status refresh timer. Keep it active while either the menu bar popover or the Status Center window is visible; Status Center stats must not depend on popover visibility.
+
 Icon assets: the app bundle icon is `Sources/CodexMenuBar/Resources/Assets.xcassets/AppIcon.appiconset`, generated from `Resources/svgs/codex-app.svg`; the menu bar template icon loads from `Resources/svgs/codex.svg`. Keep the SVGs valid when replacing icons, then regenerate the Xcode project.
 
 ## Sandboxed tests (macos-sandbox-testing)

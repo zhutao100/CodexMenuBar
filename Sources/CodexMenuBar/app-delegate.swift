@@ -13,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     model: model,
     onOpenTerminal: { [weak self] workingDirectory in
       self?.terminalLauncher.OpenTerminal(at: workingDirectory)
+    },
+    onVisibilityChanged: { [weak self] isVisible in
+      self?.SetStatusWindowVisibility(isVisible)
     }
   )
   private lazy var settingsWindowController = SettingsWindowController(
@@ -29,6 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   )
 
   private var timer: Timer?
+  private var isPopoverVisible = false
+  private var isStatusWindowVisible = false
+
+  private var isLiveSurfaceVisible: Bool {
+    isPopoverVisible || isStatusWindowVisible
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApplication.shared.setActivationPolicy(.accessory)
@@ -250,15 +259,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return
       }
 
-      self.model.isPopoverShown = isShown
+      self.isPopoverVisible = isShown
       if isShown {
         self.model.SyncSectionDisclosureState()
         self.model.InvalidateView()
-        self.StartTimer()
-        self.OnTimerTick()
-      } else {
-        self.StopTimer()
       }
+      self.RefreshLiveSurfaceTimer(tickImmediately: isShown)
     }
   }
 
@@ -302,6 +308,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func ShowStatusWindow() {
     statusWindowController.Show()
+  }
+
+  private func SetStatusWindowVisibility(_ isVisible: Bool) {
+    isStatusWindowVisible = isVisible
+    if isVisible {
+      model.InvalidateView()
+    }
+    RefreshLiveSurfaceTimer(tickImmediately: isVisible)
   }
 
   @objc
@@ -515,11 +529,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     timer = nil
   }
 
+  private func RefreshLiveSurfaceTimer(tickImmediately: Bool) {
+    guard isLiveSurfaceVisible else {
+      StopTimer()
+      return
+    }
+
+    StartTimer()
+    if tickImmediately {
+      OnTimerTick()
+    }
+  }
+
   @objc
   private func OnTimerTick() {
     let now = Date()
     turnStore.Tick(now: now)
     model.now = now
+    model.SyncSectionDisclosureState()
+    model.InvalidateView()
   }
 
   private func HandleNotification(method: String, params: [String: Any]) {
@@ -555,7 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       break
     }
     turnStore.Tick(now: now)
-    if model.isPopoverShown {
+    if isLiveSurfaceVisible {
       model.SyncSectionDisclosureState()
     }
 
@@ -564,7 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       method == "turn/started"
       || method == "turn/completed"
       || method == "thread/snapshotSummary"
-      || (model.isPopoverShown && !isHighFrequencyUpdate)
+      || (isLiveSurfaceVisible && !isHighFrequencyUpdate)
     if shouldInvalidate {
       model.InvalidateView()
     }

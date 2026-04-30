@@ -68,6 +68,61 @@ final class MenuBarUISmokeTests: XCTestCase {
     AttachScreenshot(named: "status-center-window", app: app)
   }
 
+  func testStatusCenterSidebarToggleCollapsesAndExpands() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let runtimeList = app.descendants(matching: .any)["statusCenter.runtimeList"]
+    XCTAssertTrue(runtimeList.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Runtimes"].exists)
+
+    let sidebarToggle = app.buttons["statusCenter.sidebarToggle"]
+    XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 5))
+    sidebarToggle.click()
+
+    XCTAssertTrue(WaitForNonExistence(of: runtimeList))
+    XCTAssertTrue(WaitForNonExistence(of: app.staticTexts["Runtimes"]))
+
+    let expandToggle = app.buttons["statusCenter.sidebarToggle"]
+    XCTAssertTrue(expandToggle.waitForExistence(timeout: 5))
+    expandToggle.click()
+
+    XCTAssertTrue(runtimeList.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Runtimes"].exists)
+    AttachScreenshot(named: "status-center-sidebar-expanded", app: app)
+  }
+
+  func testStatusCenterElapsedStatsRefreshAfterPopoverCloses() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let turnRow = app.buttons
+      .matching(identifier: "turn.row.fixture-endpoint")
+      .matching(NSPredicate(format: "label CONTAINS %@", "Working"))
+      .firstMatch
+    XCTAssertTrue(turnRow.waitForExistence(timeout: 5))
+    let initialElapsed = String(describing: turnRow.label)
+    XCTAssertFalse(initialElapsed.isEmpty)
+    XCTAssertTrue(WaitForStringLabelChange(of: turnRow, from: initialElapsed, timeout: 4))
+    AttachScreenshot(named: "status-center-elapsed-refreshed", app: app)
+  }
+
   func testStatusCenterClosesWithCommandW() throws {
     let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
     let statusItem = try StatusItem(in: app)
@@ -261,6 +316,18 @@ final class MenuBarUISmokeTests: XCTestCase {
     -> Bool
   {
     let predicate = NSPredicate(format: "value == %@", expected)
+    let expectation = expectation(for: predicate, evaluatedWith: element)
+    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func WaitForStringLabelChange(
+    of element: XCUIElement,
+    from initial: String,
+    timeout: TimeInterval = 5
+  )
+    -> Bool
+  {
+    let predicate = NSPredicate(format: "label != %@", initial)
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
   }

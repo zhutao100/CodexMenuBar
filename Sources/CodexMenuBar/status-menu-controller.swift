@@ -4,10 +4,12 @@ import SwiftUI
 
 private enum StatusMenuLayout {
   static let popoverWidth: CGFloat = 480
-  static let compactHeight: CGFloat = 300
-  static let activeHeight: CGFloat = 560
+  static let compactHeight: CGFloat = 330
+  static let activeHeight: CGFloat = 590
   static let contentWidth: CGFloat = 456
   static let activeListMaxHeight: CGFloat = 430
+  static let footerSpacing: CGFloat = 8
+  static let footerButtonWidth: CGFloat = (contentWidth - footerSpacing) / 2
 }
 
 @MainActor
@@ -625,17 +627,12 @@ private struct StatusDropdownView: View {
 
       Divider()
 
-      HStack(spacing: 8) {
-        Button("Reconnect codexd", action: onReconnectAll)
-          .accessibilityIdentifier("status.reconnect")
-        Button("Status Center", action: onOpenStatusCenter)
-          .accessibilityIdentifier("status.statusCenter")
-        Button("Settings", action: onOpenSettings)
-          .accessibilityIdentifier("status.settings")
-        Spacer()
-        Button("Quit CodexMenuBar", action: onQuit)
-          .accessibilityIdentifier("status.quit")
-      }
+      StatusDropdownFooter(
+        onReconnectAll: onReconnectAll,
+        onOpenStatusCenter: onOpenStatusCenter,
+        onOpenSettings: onOpenSettings,
+        onQuit: onQuit
+      )
     }
     .padding(12)
     .frame(width: StatusMenuLayout.contentWidth)
@@ -658,5 +655,67 @@ private struct StatusDropdownView: View {
     }
 
     return text
+  }
+}
+
+private struct StatusDropdownFooter: View {
+  let onReconnectAll: () -> Void
+  let onOpenStatusCenter: () -> Void
+  let onOpenSettings: () -> Void
+  let onQuit: () -> Void
+
+  var body: some View {
+    VStack(spacing: 8) {
+      HStack(spacing: StatusMenuLayout.footerSpacing) {
+        StatusDropdownFooterButton(
+          title: "Reconnect codexd",
+          systemImage: "arrow.clockwise",
+          accessibilityIdentifier: "status.reconnect",
+          action: onReconnectAll
+        )
+        StatusDropdownFooterButton(
+          title: "Status Center",
+          systemImage: "rectangle.3.group",
+          accessibilityIdentifier: "status.statusCenter",
+          action: onOpenStatusCenter
+        )
+      }
+
+      HStack(spacing: StatusMenuLayout.footerSpacing) {
+        StatusDropdownFooterButton(
+          title: "Settings",
+          systemImage: "gearshape",
+          accessibilityIdentifier: "status.settings",
+          action: onOpenSettings
+        )
+        StatusDropdownFooterButton(
+          title: "Quit CodexMenuBar",
+          systemImage: "power",
+          accessibilityIdentifier: "status.quit",
+          action: onQuit
+        )
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct StatusDropdownFooterButton: View {
+  let title: String
+  let systemImage: String
+  let accessibilityIdentifier: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Label(title, systemImage: systemImage)
+        .font(.caption)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.small)
+    .frame(width: StatusMenuLayout.footerButtonWidth)
+    .accessibilityIdentifier(accessibilityIdentifier)
   }
 }

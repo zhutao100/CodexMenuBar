@@ -6,11 +6,21 @@ private enum StatusWindowLayout {
   static let height: CGFloat = 560
   static let minWidth: CGFloat = 640
   static let minHeight: CGFloat = 460
+  static let sidebarWidth: CGFloat = 260
+  static let collapsedSidebarWidth: CGFloat = 44
 }
 
 @MainActor
-final class StatusWindowController: NSWindowController {
-  init(model: MenuBarViewModel, onOpenTerminal: @escaping (String) -> Void) {
+final class StatusWindowController: NSWindowController, NSWindowDelegate {
+  private let onVisibilityChanged: (Bool) -> Void
+
+  init(
+    model: MenuBarViewModel,
+    onOpenTerminal: @escaping (String) -> Void,
+    onVisibilityChanged: @escaping (Bool) -> Void
+  ) {
+    self.onVisibilityChanged = onVisibilityChanged
+
     let rootView = StatusCenterView(model: model, onOpenTerminal: onOpenTerminal)
     let hostingController = NSHostingController(rootView: rootView)
 
@@ -25,6 +35,7 @@ final class StatusWindowController: NSWindowController {
     window.center()
 
     super.init(window: window)
+    window.delegate = self
   }
 
   @available(*, unavailable)
@@ -39,6 +50,22 @@ final class StatusWindowController: NSWindowController {
 
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
+    onVisibilityChanged(true)
+  }
+
+  func windowWillClose(_ notification: Notification) {
+    _ = notification
+    onVisibilityChanged(false)
+  }
+
+  func windowDidMiniaturize(_ notification: Notification) {
+    _ = notification
+    onVisibilityChanged(false)
+  }
+
+  func windowDidDeminiaturize(_ notification: Notification) {
+    _ = notification
+    onVisibilityChanged(true)
   }
 }
 
@@ -48,31 +75,15 @@ private struct StatusCenterView: View {
   let onOpenTerminal: (String) -> Void
 
   @State private var selectedEndpointId: String?
+  @State private var isSidebarCollapsed = false
 
   var body: some View {
-    NavigationSplitView {
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Runtimes")
-          .font(.headline)
-          .padding(.horizontal, 10)
-          .padding(.top, 10)
+    let _ = model.viewRefreshToken
+    HStack(spacing: 0) {
+      SidebarView
 
-        List(selection: $selectedEndpointId) {
-          ForEach(model.endpointRows, id: \.endpointId) { row in
-            StatusCenterRuntimeRow(row: row)
-              .tag(row.endpointId)
-          }
-        }
-        .accessibilityIdentifier("statusCenter.runtimeList")
+      Divider()
 
-        Divider()
-
-        StatusCenterDaemonSummary(model: model)
-          .padding(.horizontal, 10)
-          .padding(.bottom, 10)
-      }
-      .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
-    } detail: {
       DetailView
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -82,6 +93,50 @@ private struct StatusCenterView: View {
     }
     .onChange(of: model.endpointRows.map(\.endpointId)) { _, _ in
       SelectDefaultEndpointIfNeeded()
+    }
+  }
+
+  @ViewBuilder
+  private var SidebarView: some View {
+    if isSidebarCollapsed {
+      VStack {
+        StatusCenterSidebarToggleButton(isCollapsed: true, action: ToggleSidebar)
+          .padding(.top, 10)
+
+        Spacer()
+      }
+      .frame(width: StatusWindowLayout.collapsedSidebarWidth)
+      .background(Color(nsColor: NSColor.windowBackgroundColor))
+    } else {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 8) {
+          Text("Runtimes")
+            .font(.headline)
+
+          Spacer(minLength: 4)
+
+          StatusCenterSidebarToggleButton(isCollapsed: false, action: ToggleSidebar)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+
+        List(selection: $selectedEndpointId) {
+          ForEach(model.endpointRows, id: \.endpointId) { row in
+            StatusCenterRuntimeRow(row: row)
+              .tag(row.endpointId)
+          }
+        }
+        .listStyle(.sidebar)
+        .accessibilityIdentifier("statusCenter.runtimeList")
+
+        Divider()
+
+        StatusCenterDaemonSummary(model: model)
+          .padding(.horizontal, 10)
+          .padding(.bottom, 10)
+      }
+      .frame(width: StatusWindowLayout.sidebarWidth)
+      .background(Color(nsColor: NSColor.windowBackgroundColor))
     }
   }
 
@@ -138,6 +193,31 @@ private struct StatusCenterView: View {
       return
     }
     selectedEndpointId = rows.first?.endpointId
+  }
+
+  private func ToggleSidebar() {
+    isSidebarCollapsed.toggle()
+  }
+}
+
+private struct StatusCenterSidebarToggleButton: View {
+  let isCollapsed: Bool
+  let action: () -> Void
+
+  private var title: String {
+    isCollapsed ? "Show sidebar" : "Hide sidebar"
+  }
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: isCollapsed ? "chevron.right" : "chevron.left")
+        .frame(width: 18, height: 18)
+    }
+    .buttonStyle(.borderless)
+    .controlSize(.small)
+    .help(title)
+    .accessibilityLabel(title)
+    .accessibilityIdentifier("statusCenter.sidebarToggle")
   }
 }
 
