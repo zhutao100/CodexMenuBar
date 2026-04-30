@@ -7,7 +7,7 @@
 - Verify (sandboxed, auto Xcode/SwiftPM): `./scripts/verify_fast.sh`
 - Run (Xcode): `open CodexMenuBar.xcodeproj`
 - Run (SwiftPM): `swift run CodexMenuBar`
-- Evidence run (xcresult): `./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing`
+- Evidence run (agent-safe xcresult): `./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots redact-suspect --delete-raw-attachments`
 - E2E codexd smoke (artifacts): `./scripts/e2e_codexd.sh`
 - E2E codexd smoke using installed `codex`: `./scripts/e2e_codexd.sh --use-codex-on-path`
 
@@ -19,7 +19,7 @@ Check whether `config/external-projects.local.yaml` exists and has a valid `exte
 
 The app also exposes a Settings window from the menu bar dropdown. Use it for session-only `codexd` socket overrides and macOS 26 menu-bar-visibility troubleshooting; launch-time env vars (`CODEXD_SOCKET_PATH`, `CODEX_HOME`) still define the default path.
 
-UI tests use launch harnesses (`--start-screen Settings`, `--open-status-surface popover|context-menu`, `--fixture active-turn`). If macOS blocks XCUITest with an "XCTest is trying to Enable UI Automation" password prompt, preserve the `.xcresult`; manual screenshots are only fallback evidence until the OS permission is granted.
+UI tests use launch harnesses (`--start-screen Settings`, `--open-status-surface popover|context-menu`, `--fixture active-turn`). If macOS blocks XCUITest with an "XCTest is trying to Enable UI Automation" password prompt, preserve the `.xcresult`, capture attribution with `scripts/macos/tcc_attribution_tail.sh`, and treat manual screenshots as fallback evidence only until the OS permission is granted.
 
 `AppDelegate` owns the programmatic main menu for standard macOS command shortcuts (`⌘W`, `⌘,`, edit commands, window commands). Keep new persistent windows on the responder chain so these shortcuts continue to work.
 

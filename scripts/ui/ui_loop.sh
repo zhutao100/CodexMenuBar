@@ -36,6 +36,11 @@ Optional:
   --reuse-build                   Run build-for-testing then test-without-building (faster reruns)
   --xctestrun <path>              Use existing .xctestrun (implies test-without-building; cannot use --workspace/--project)
   --only-failures-attachments     Export only failing attachments
+  --system-attachment-lifetime <policy> Patch generated .xctestrun SystemAttachmentLifetime (keepAlways|deleteOnSuccess|keepNever)
+  --user-attachment-lifetime <policy>   Patch generated .xctestrun UserAttachmentLifetime (keepAlways|deleteOnSuccess|keepNever)
+  --sanitize-screenshots <policy>       Export agent-safe attachments: keep|redact|redact-suspect|crop
+  --screenshot-crop <x,y,w,h>           Crop rectangle used with --sanitize-screenshots crop
+  --delete-raw-attachments              Delete attachments_raw after sanitized export
   --parallel-testing-enabled <YES|NO>  Force parallel test execution on/off (default: NO)
   --maximum-parallel-testing-workers <n>  Limit spawned test runners when parallel is enabled
   --parallel-testing-worker-count <n>    Spawn exactly n test runners when parallel is enabled
@@ -51,6 +56,13 @@ Examples:
 
   scripts/ui/ui_loop.sh --workspace App.xcworkspace --scheme App --test-plan Smoke \
     --destination 'platform=macOS' --reuse-build --derived-data /tmp/ui-loop/DerivedData
+
+  # Agent-safe macOS UI loop: suppress automatic full-screen XCTest screenshots,
+  # then redact any large attachments that still appear during export.
+  scripts/ui/ui_loop.sh --workspace App.xcworkspace --scheme App --test-plan Smoke \
+    --destination 'platform=macOS' --reuse-build \
+    --system-attachment-lifetime keepNever \
+    --sanitize-screenshots redact-suspect --delete-raw-attachments
 EOF
 }
 
@@ -66,6 +78,11 @@ CONFIGURATION=""
 REUSE_BUILD=0
 XCTESTRUN=""
 ONLY_FAIL_ATTACH=0
+SYSTEM_ATTACHMENT_LIFETIME=""
+USER_ATTACHMENT_LIFETIME=""
+SANITIZE_SCREENSHOTS=""
+SCREENSHOT_CROP=""
+DELETE_RAW_ATTACHMENTS=0
 RUN_ID=""
 ADHOC_SIGNING=0
 VERBOSE="${VERBOSE:-0}"
@@ -97,6 +114,11 @@ while [[ $# -gt 0 ]]; do
     --reuse-build) REUSE_BUILD=1; shift 1;;
     --xctestrun) XCTESTRUN="$2"; shift 2;;
     --only-failures-attachments) ONLY_FAIL_ATTACH=1; shift 1;;
+    --system-attachment-lifetime) SYSTEM_ATTACHMENT_LIFETIME="$2"; shift 2;;
+    --user-attachment-lifetime) USER_ATTACHMENT_LIFETIME="$2"; shift 2;;
+    --sanitize-screenshots) SANITIZE_SCREENSHOTS="$2"; shift 2;;
+    --screenshot-crop) SCREENSHOT_CROP="$2"; shift 2;;
+    --delete-raw-attachments) DELETE_RAW_ATTACHMENTS=1; shift 1;;
     --parallel-testing-enabled) PARALLEL_TESTING_ENABLED="$2"; shift 2;;
     --maximum-parallel-testing-workers) MAX_PARALLEL_WORKERS="$2"; shift 2;;
     --parallel-testing-worker-count) PARALLEL_WORKER_COUNT="$2"; shift 2;;
@@ -111,6 +133,21 @@ case "$PARALLEL_TESTING_ENABLED" in
   YES|NO) ;;
   *) echo "--parallel-testing-enabled must be YES or NO (got: $PARALLEL_TESTING_ENABLED)" >&2; exit 2;;
 esac
+
+for lifetime in "$SYSTEM_ATTACHMENT_LIFETIME" "$USER_ATTACHMENT_LIFETIME"; do
+  case "$lifetime" in
+    ""|keepAlways|deleteOnSuccess|keepNever) ;;
+    *) echo "Attachment lifetime must be keepAlways, deleteOnSuccess, or keepNever (got: $lifetime)" >&2; exit 2;;
+  esac
+done
+case "$SANITIZE_SCREENSHOTS" in
+  ""|keep|redact|redact-suspect|crop) ;;
+  *) echo "--sanitize-screenshots must be keep, redact, redact-suspect, or crop" >&2; exit 2;;
+esac
+if [[ "$SANITIZE_SCREENSHOTS" == "crop" && -z "$SCREENSHOT_CROP" ]]; then
+  echo "--sanitize-screenshots crop requires --screenshot-crop x,y,width,height" >&2
+  exit 2
+fi
 
 if [[ -z "$SCHEME" ]]; then
   echo "Missing --scheme" >&2
@@ -272,7 +309,33 @@ run_xcodebuild_test() {
   fi
 }
 
+patch_xctestrun_attachment_policy() {
+  if [[ -z "$SYSTEM_ATTACHMENT_LIFETIME" && -z "$USER_ATTACHMENT_LIFETIME" ]]; then
+    return 0
+  fi
+
+  if [[ -z "$XCTESTRUN" || ! -f "$XCTESTRUN" ]]; then
+    echo "Cannot patch attachment policy; missing .xctestrun: $XCTESTRUN" >&2
+    return 2
+  fi
+
+  local args=("$XCTESTRUN")
+  if [[ -n "$SYSTEM_ATTACHMENT_LIFETIME" ]]; then
+    args+=("--system-attachment-lifetime" "$SYSTEM_ATTACHMENT_LIFETIME")
+  fi
+  if [[ -n "$USER_ATTACHMENT_LIFETIME" ]]; then
+    args+=("--user-attachment-lifetime" "$USER_ATTACHMENT_LIFETIME")
+  fi
+
+  "$SCRIPT_DIR/patch_xctestrun_attachment_policy.py" "${args[@]}" > "$RUN_DIR/xctestrun-attachment-policy.json"
+}
+
 run_test_without_building() {
+  if patch_xctestrun_attachment_policy; then
+    :
+  else
+    return $?
+  fi
   cmd=("xcodebuild" "-xctestrun" "$XCTESTRUN")
 
   if [[ -n "$DESTINATION" ]]; then cmd+=("-destination" "$DESTINATION"); fi
@@ -308,7 +371,9 @@ run_test_without_building() {
 
 xcodebuild_status=0
 if [[ -n "$XCTESTRUN" ]]; then
-  if ! run_test_without_building; then
+  if run_test_without_building; then
+    :
+  else
     xcodebuild_status=$?
   fi
 elif [[ "$REUSE_BUILD" -eq 1 ]]; then
@@ -318,9 +383,7 @@ elif [[ "$REUSE_BUILD" -eq 1 ]]; then
 
   # build-for-testing embeds test-plan/test-config into the generated .xctestrun.
   # (Do not rely on -testPlan being honored by test-without-building.)
-  if ! run_xcodebuild_test "build-for-testing"; then
-    xcodebuild_status=$?
-  else
+  if run_xcodebuild_test "build-for-testing"; then
     mtime_of() {
       local p="$1"
       if stat -f %m "$p" >/dev/null 2>&1; then
@@ -351,12 +414,21 @@ elif [[ "$REUSE_BUILD" -eq 1 ]]; then
     if [[ -z "$XCTESTRUN" ]]; then
       echo "Could not locate .xctestrun under derived data: $DERIVED_DATA" >&2
       xcodebuild_status=3
-    elif ! run_test_without_building; then
+    elif run_test_without_building; then
+      :
+    else
       xcodebuild_status=$?
     fi
+  else
+    xcodebuild_status=$?
   fi
 else
-  if ! run_xcodebuild_test "test"; then
+  if [[ -n "$SYSTEM_ATTACHMENT_LIFETIME" || -n "$USER_ATTACHMENT_LIFETIME" ]]; then
+    echo "==> Warning: attachment-lifetime patching requires --reuse-build or --xctestrun; direct xcodebuild test cannot patch a generated .xctestrun before execution." >&2
+  fi
+  if run_xcodebuild_test "test"; then
+    :
+  else
     xcodebuild_status=$?
   fi
 fi
@@ -393,6 +465,15 @@ if [[ -d "$RESULT_BUNDLE" ]]; then
   EXPORT_ARGS=()
   if [[ "$ONLY_FAIL_ATTACH" -eq 1 ]]; then
     EXPORT_ARGS+=("--only-failures")
+  fi
+  if [[ -n "$SANITIZE_SCREENSHOTS" ]]; then
+    EXPORT_ARGS+=("--sanitize-screenshots" "$SANITIZE_SCREENSHOTS")
+  fi
+  if [[ -n "$SCREENSHOT_CROP" ]]; then
+    EXPORT_ARGS+=("--screenshot-crop" "$SCREENSHOT_CROP")
+  fi
+  if [[ "$DELETE_RAW_ATTACHMENTS" -eq 1 ]]; then
+    EXPORT_ARGS+=("--delete-raw-attachments")
   fi
   "$SCRIPT_DIR/xcresult_export.sh" "$RESULT_BUNDLE" "$RUN_DIR" "${EXPORT_ARGS[@]}" || true
 fi

@@ -358,7 +358,19 @@ final class MenuBarUISmokeTests: XCTestCase {
   }
 
   private func AttachScreenshot(named name: String, app: XCUIApplication) {
-    let attachment = XCTAttachment(screenshot: app.screenshot())
+    let screenshot: XCUIScreenshot
+    let candidates = [
+      app.windows["Codex Status Center"],
+      app.windows["CodexMenuBar Settings"],
+      app.windows.firstMatch,
+    ]
+    if let element = candidates.first(where: { $0.exists }) {
+      screenshot = element.screenshot()
+    } else {
+      screenshot = app.screenshot()
+    }
+
+    let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = name
     attachment.lifetime = .keepAlways
     add(attachment)
