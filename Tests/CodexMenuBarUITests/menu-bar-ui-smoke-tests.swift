@@ -16,7 +16,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
     let settingsButton = app.buttons["status.settings"]
     let reconnectButton = app.buttons["status.reconnect"]
-    XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
     XCTAssertTrue(app.staticTexts["status.daemonSummary"].exists)
     XCTAssertTrue(reconnectButton.exists)
     XCTAssertTrue(app.buttons["status.statusCenter"].exists)
@@ -34,7 +34,7 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
     let settingsButton = app.buttons["status.settings"]
-    XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
 
     ClickAwayFromStatusPopover(statusItem: statusItem)
     XCTAssertTrue(WaitForNonExistence(of: settingsButton))
@@ -45,6 +45,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     let statusItem = try StatusItem(in: app)
 
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
     let header = app.staticTexts["status.headerTitle"]
     XCTAssertTrue(header.waitForExistence(timeout: 5))
     XCTAssertTrue(WaitForStringValue(of: header, equals: "Codex - 1 active"))
@@ -59,6 +60,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     let statusItem = try StatusItem(in: app)
 
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
     let statusCenterButton = app.buttons["status.statusCenter"]
     XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
     statusCenterButton.click()
@@ -76,6 +78,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     let statusItem = try StatusItem(in: app)
 
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
     let statusCenterButton = app.buttons["status.statusCenter"]
     XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
     statusCenterButton.click()
@@ -108,6 +111,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     let statusItem = try StatusItem(in: app)
 
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
     let statusCenterButton = app.buttons["status.statusCenter"]
     XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
     statusCenterButton.click()
@@ -131,6 +135,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     let statusItem = try StatusItem(in: app)
 
     XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
     let statusCenterButton = app.buttons["status.statusCenter"]
     XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
     statusCenterButton.click()
@@ -298,6 +303,22 @@ final class MenuBarUISmokeTests: XCTestCase {
     }
 
     throw XCTSkip("Unable to locate status item '\(statusItemTitle)' in app or SystemUIServer.")
+  }
+
+  private func EnsureStatusPopoverOpen(
+    in app: XCUIApplication,
+    statusItem: XCUIElement,
+    timeout: TimeInterval = 5
+  )
+    -> Bool
+  {
+    let settingsButton = app.buttons["status.settings"]
+    if settingsButton.waitForExistence(timeout: 2) {
+      return true
+    }
+
+    statusItem.click()
+    return settingsButton.waitForExistence(timeout: timeout)
   }
 
   private func ContextMenuItem(named title: String, app: XCUIApplication) throws -> XCUIElement {

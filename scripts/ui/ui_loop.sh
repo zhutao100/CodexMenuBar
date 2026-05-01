@@ -86,6 +86,14 @@ DELETE_RAW_ATTACHMENTS=0
 RUN_ID=""
 ADHOC_SIGNING=0
 VERBOSE="${VERBOSE:-0}"
+PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 not found; set PYTHON_BIN to a working Python interpreter" >&2
+  exit 2
+fi
 
 PARALLEL_TESTING_ENABLED="NO"
 MAX_PARALLEL_WORKERS=""
@@ -255,6 +263,22 @@ append_signing_overrides() {
   fi
 }
 
+append_test_filters() {
+  local item
+  if [[ ${#ONLY_TESTING[@]} -gt 0 ]]; then
+    for item in "${ONLY_TESTING[@]}"; do cmd+=("-only-testing" "$item"); done
+  fi
+  if [[ ${#SKIP_TESTING[@]} -gt 0 ]]; then
+    for item in "${SKIP_TESTING[@]}"; do cmd+=("-skip-testing" "$item"); done
+  fi
+  if [[ ${#ONLY_TEST_CONFIG[@]} -gt 0 ]]; then
+    for item in "${ONLY_TEST_CONFIG[@]}"; do cmd+=("-only-test-configuration" "$item"); done
+  fi
+  if [[ ${#SKIP_TEST_CONFIG[@]} -gt 0 ]]; then
+    for item in "${SKIP_TEST_CONFIG[@]}"; do cmd+=("-skip-test-configuration" "$item"); done
+  fi
+}
+
 run_xcodebuild_test() {
   local action="$1"; shift
   cmd=("xcodebuild")
@@ -269,11 +293,7 @@ run_xcodebuild_test() {
   if [[ -n "$DESTINATION" ]]; then cmd+=("-destination" "$DESTINATION"); fi
   if [[ -n "$DERIVED_DATA" ]]; then cmd+=("-derivedDataPath" "$DERIVED_DATA"); fi
 
-  local item
-  for item in "${ONLY_TESTING[@]}"; do cmd+=("-only-testing" "$item"); done
-  for item in "${SKIP_TESTING[@]}"; do cmd+=("-skip-testing" "$item"); done
-  for item in "${ONLY_TEST_CONFIG[@]}"; do cmd+=("-only-test-configuration" "$item"); done
-  for item in "${SKIP_TEST_CONFIG[@]}"; do cmd+=("-skip-test-configuration" "$item"); done
+  append_test_filters
 
   if [[ "$action" != "build-for-testing" ]]; then
     clean_result_bundle
@@ -327,7 +347,7 @@ patch_xctestrun_attachment_policy() {
     args+=("--user-attachment-lifetime" "$USER_ATTACHMENT_LIFETIME")
   fi
 
-  "$SCRIPT_DIR/patch_xctestrun_attachment_policy.py" "${args[@]}" > "$RUN_DIR/xctestrun-attachment-policy.json"
+  "$PYTHON_BIN" "$SCRIPT_DIR/patch_xctestrun_attachment_policy.py" "${args[@]}" > "$RUN_DIR/xctestrun-attachment-policy.json"
 }
 
 run_test_without_building() {
@@ -341,6 +361,7 @@ run_test_without_building() {
   if [[ -n "$DESTINATION" ]]; then cmd+=("-destination" "$DESTINATION"); fi
   clean_result_bundle
   cmd+=("-resultBundlePath" "$RESULT_BUNDLE")
+  append_test_filters
   cmd+=("-parallel-testing-enabled" "$PARALLEL_TESTING_ENABLED")
   if [[ -n "$PARALLEL_WORKER_COUNT" ]]; then
     cmd+=("-parallel-testing-worker-count" "$PARALLEL_WORKER_COUNT")
@@ -441,7 +462,7 @@ fi
 
 if [[ "$xcodebuild_status" -eq 0 && -f "$SUMMARY_JSON" ]]; then
   summary_result="$(
-    python3 - "$SUMMARY_JSON" <<'PY'
+    "$PYTHON_BIN" - "$SUMMARY_JSON" <<'PY'
 import json
 import sys
 

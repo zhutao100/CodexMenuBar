@@ -3,6 +3,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 not found; set PYTHON_BIN to a working Python interpreter" >&2
+  exit 2
+fi
 
 if [[ $# -lt 2 ]]; then
   cat >&2 <<'USAGE'
@@ -92,7 +100,7 @@ if [[ -n "$SANITIZE_SCREENSHOTS" && "$SANITIZE_SCREENSHOTS" != "keep" ]]; then
   if [[ -n "$SCREENSHOT_CROP" ]]; then
     SANITIZE_ARGS+=("--crop" "$SCREENSHOT_CROP")
   fi
-  "$SCRIPT_DIR/xcresult_sanitize_attachments.py" "${SANITIZE_ARGS[@]}" || true
+  "$PYTHON_BIN" "$SCRIPT_DIR/xcresult_sanitize_attachments.py" "${SANITIZE_ARGS[@]}" || true
   if [[ "$DELETE_RAW_ATTACHMENTS" -eq 1 ]]; then
     rm -rf "$RAW_ATT_DIR"
   fi
