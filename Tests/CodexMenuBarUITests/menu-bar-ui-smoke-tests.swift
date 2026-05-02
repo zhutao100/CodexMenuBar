@@ -21,7 +21,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(reconnectButton.exists)
     XCTAssertTrue(app.buttons["status.statusCenter"].exists)
     XCTAssertTrue(app.buttons["status.quit"].exists)
-    XCTAssertLessThanOrEqual(reconnectButton.frame.width, 210)
+    XCTAssertLessThanOrEqual(reconnectButton.frame.width, 44)
 
     settingsButton.click()
     XCTAssertTrue(SettingsWindow(in: app).waitForExistence(timeout: 5))
@@ -96,6 +96,8 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     XCTAssertTrue(WaitForNonExistence(of: runtimeList))
     XCTAssertTrue(WaitForNonExistence(of: app.staticTexts["Runtimes"]))
+    XCTAssertTrue(
+      app.buttons["statusCenter.collapsedRuntime.fixture-endpoint"].waitForExistence(timeout: 5))
 
     let expandToggle = app.buttons["statusCenter.sidebarToggle"]
     XCTAssertTrue(expandToggle.waitForExistence(timeout: 5))
@@ -104,6 +106,28 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(runtimeList.waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["Runtimes"].exists)
     AttachScreenshot(named: "status-center-sidebar-expanded", app: app)
+  }
+
+  func testStatusCenterEmptyStateIsCenteredWithoutRuntimes() throws {
+    let app = LaunchApp(statusSurface: "popover")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+    let emptyState = app.descendants(matching: .any)["statusCenter.empty"]
+    XCTAssertTrue(emptyState.waitForExistence(timeout: 5))
+
+    let emptyTitle = app.staticTexts["No Codex runtimes"]
+    XCTAssertTrue(emptyTitle.waitForExistence(timeout: 5))
+    XCTAssertLessThan(abs(emptyTitle.frame.midY - statusWindow.frame.midY), 120)
+    XCTAssertGreaterThan(emptyTitle.frame.midX, statusWindow.frame.midX)
+    AttachScreenshot(named: "status-center-empty", app: app)
   }
 
   func testStatusCenterElapsedStatsRefreshAfterPopoverCloses() throws {

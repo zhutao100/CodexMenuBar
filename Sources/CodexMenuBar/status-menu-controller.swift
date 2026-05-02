@@ -4,13 +4,17 @@ import SwiftUI
 
 private enum StatusMenuLayout {
   static let popoverWidth: CGFloat = 480
-  static let compactHeight: CGFloat = 330
-  static let activeHeight: CGFloat = 590
+  static let compactHeight: CGFloat = 238
+  static let activeMinHeight: CGFloat = 390
+  static let activeMaxHeight: CGFloat = 548
+  static let activeBaseHeight: CGFloat = 150
+  static let activeRowHeight: CGFloat = 96
+  static let activeExpandedRowExtra: CGFloat = 120
+  static let activeRateLimitHeight: CGFloat = 34
   static let outerPadding: CGFloat = 12
   static let contentWidth: CGFloat = popoverWidth - (outerPadding * 2)
-  static let activeListMaxHeight: CGFloat = 430
-  static let footerSpacing: CGFloat = 8
-  static let footerHorizontalInset: CGFloat = 24
+  static let activeListMaxHeight: CGFloat = 388
+  static let headerActionButtonSize: CGFloat = 26
 }
 
 @MainActor
@@ -22,18 +26,38 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
 
   private enum PopoverLayoutProfile: Equatable {
     case compact
-    case active
+    case active(height: CGFloat)
 
     init(for model: MenuBarViewModel) {
-      self = model.endpointRows.isEmpty ? .compact : .active
+      let rows = model.endpointRows
+      guard !rows.isEmpty else {
+        self = .compact
+        return
+      }
+
+      let expandedCount = rows.filter { model.expandedEndpointIds.contains($0.endpointId) }.count
+      let listHeight = min(
+        StatusMenuLayout.activeListMaxHeight,
+        CGFloat(rows.count) * StatusMenuLayout.activeRowHeight
+          + CGFloat(expandedCount) * StatusMenuLayout.activeExpandedRowExtra
+      )
+      let rateLimitHeight =
+        model.activeRateLimitInfo == nil ? 0 : StatusMenuLayout.activeRateLimitHeight
+      let height = min(
+        StatusMenuLayout.activeMaxHeight,
+        max(
+          StatusMenuLayout.activeMinHeight,
+          StatusMenuLayout.activeBaseHeight + listHeight + rateLimitHeight)
+      )
+      self = .active(height: height)
     }
 
     var height: CGFloat {
       switch self {
       case .compact:
         return StatusMenuLayout.compactHeight
-      case .active:
-        return StatusMenuLayout.activeHeight
+      case .active(let height):
+        return height
       }
     }
   }
@@ -395,6 +419,7 @@ final class StatusMenuController: NSObject, NSPopoverDelegate {
       _ = model.runningCount
       _ = model.endpointRows.count
       _ = model.expandedEndpointIds.count
+      _ = model.activeRateLimitInfo
       _ = model.lowRateLimitWarningText
       _ = model.codexdDiagnostics
     } onChange: { [weak self] in
@@ -523,7 +548,7 @@ private struct StatusDropdownView: View {
           .lineLimit(1)
           .accessibilityIdentifier("status.headerTitle")
 
-        Spacer(minLength: 4)
+        Spacer(minLength: 2)
 
         if let warningText = model.lowRateLimitWarningText {
           Label(warningText, systemImage: "exclamationmark.triangle.fill")
@@ -531,6 +556,13 @@ private struct StatusDropdownView: View {
             .foregroundStyle(.orange)
             .lineLimit(1)
         }
+
+        StatusDropdownHeaderActions(
+          onReconnectAll: onReconnectAll,
+          onOpenStatusCenter: onOpenStatusCenter,
+          onOpenSettings: onOpenSettings,
+          onQuit: onQuit
+        )
       }
 
       Divider()
@@ -626,14 +658,6 @@ private struct StatusDropdownView: View {
           .foregroundStyle(.secondary)
       }
 
-      Divider()
-
-      StatusDropdownFooter(
-        onReconnectAll: onReconnectAll,
-        onOpenStatusCenter: onOpenStatusCenter,
-        onOpenSettings: onOpenSettings,
-        onQuit: onQuit
-      )
     }
     .padding(StatusMenuLayout.outerPadding)
     .frame(width: StatusMenuLayout.popoverWidth, alignment: .topLeading)
@@ -659,50 +683,43 @@ private struct StatusDropdownView: View {
   }
 }
 
-private struct StatusDropdownFooter: View {
+private struct StatusDropdownHeaderActions: View {
   let onReconnectAll: () -> Void
   let onOpenStatusCenter: () -> Void
   let onOpenSettings: () -> Void
   let onQuit: () -> Void
 
   var body: some View {
-    VStack(spacing: 8) {
-      HStack(spacing: StatusMenuLayout.footerSpacing) {
-        StatusDropdownFooterButton(
-          title: "Reconnect codexd",
-          systemImage: "arrow.clockwise",
-          accessibilityIdentifier: "status.reconnect",
-          action: onReconnectAll
-        )
-        StatusDropdownFooterButton(
-          title: "Status Center",
-          systemImage: "rectangle.3.group",
-          accessibilityIdentifier: "status.statusCenter",
-          action: onOpenStatusCenter
-        )
-      }
-
-      HStack(spacing: StatusMenuLayout.footerSpacing) {
-        StatusDropdownFooterButton(
-          title: "Settings",
-          systemImage: "gearshape",
-          accessibilityIdentifier: "status.settings",
-          action: onOpenSettings
-        )
-        StatusDropdownFooterButton(
-          title: "Quit CodexMenuBar",
-          systemImage: "power",
-          accessibilityIdentifier: "status.quit",
-          action: onQuit
-        )
-      }
+    HStack(spacing: 4) {
+      StatusDropdownHeaderButton(
+        title: "Reconnect codexd",
+        systemImage: "arrow.clockwise",
+        accessibilityIdentifier: "status.reconnect",
+        action: onReconnectAll
+      )
+      StatusDropdownHeaderButton(
+        title: "Status Center",
+        systemImage: "rectangle.3.group",
+        accessibilityIdentifier: "status.statusCenter",
+        action: onOpenStatusCenter
+      )
+      StatusDropdownHeaderButton(
+        title: "Settings",
+        systemImage: "gearshape",
+        accessibilityIdentifier: "status.settings",
+        action: onOpenSettings
+      )
+      StatusDropdownHeaderButton(
+        title: "Quit CodexMenuBar",
+        systemImage: "power",
+        accessibilityIdentifier: "status.quit",
+        action: onQuit
+      )
     }
-    .padding(.horizontal, StatusMenuLayout.footerHorizontalInset)
-    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
-private struct StatusDropdownFooterButton: View {
+private struct StatusDropdownHeaderButton: View {
   let title: String
   let systemImage: String
   let accessibilityIdentifier: String
@@ -710,14 +727,18 @@ private struct StatusDropdownFooterButton: View {
 
   var body: some View {
     Button(action: action) {
-      Label(title, systemImage: systemImage)
-        .font(.caption)
-        .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: .center)
+      Image(systemName: systemImage)
+        .font(.system(size: 12, weight: .semibold))
+        .frame(
+          width: StatusMenuLayout.headerActionButtonSize,
+          height: StatusMenuLayout.headerActionButtonSize
+        )
+        .contentShape(Rectangle())
     }
-    .buttonStyle(.bordered)
+    .buttonStyle(.borderless)
     .controlSize(.small)
-    .frame(maxWidth: .infinity)
+    .help(title)
+    .accessibilityLabel(title)
     .accessibilityIdentifier(accessibilityIdentifier)
   }
 }

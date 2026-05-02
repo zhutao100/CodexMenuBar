@@ -25,6 +25,10 @@ UI tests use launch harnesses (`--start-screen Settings`, `--open-status-surface
 
 `AppDelegate` also owns the live status refresh timer. Keep it active while either the menu bar popover or the Status Center window is visible; Status Center stats must not depend on popover visibility.
 
+The menu bar popover keeps global actions as icon buttons in the title row with `.help`/accessibility labels; keep idle popovers compact and resize active popovers from runtime count/expanded state instead of adding fixed footer chrome.
+
+The Status Center sidebar is resizable when expanded and still switches runtimes through collapsed icon buttons. Preserve the centered `No Codex runtimes` detail empty state when no runtime is selected.
+
 Icon assets: the app bundle icon is `Sources/CodexMenuBar/Resources/Assets.xcassets/AppIcon.appiconset`, generated from `Resources/svgs/codex-app.svg`; the menu bar template icon loads from `Resources/svgs/codex.svg`. Keep the SVGs valid when replacing icons, then regenerate the Xcode project.
 
 ## Sandboxed tests (macos-sandbox-testing)

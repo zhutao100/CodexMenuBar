@@ -7,6 +7,8 @@ private enum StatusWindowLayout {
   static let minWidth: CGFloat = 640
   static let minHeight: CGFloat = 460
   static let sidebarWidth: CGFloat = 260
+  static let sidebarMinWidth: CGFloat = 220
+  static let sidebarMaxWidth: CGFloat = 360
   static let collapsedSidebarWidth: CGFloat = 44
 }
 
@@ -79,13 +81,34 @@ private struct StatusCenterView: View {
 
   var body: some View {
     let _ = model.viewRefreshToken
-    HStack(spacing: 0) {
-      SidebarView
+    Group {
+      if isSidebarCollapsed {
+        HStack(spacing: 0) {
+          SidebarView
+            .frame(width: StatusWindowLayout.collapsedSidebarWidth)
 
-      Divider()
+          Divider()
 
-      DetailView
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          DetailView
+        }
+      } else {
+        HSplitView {
+          SidebarView
+            .frame(
+              minWidth: StatusWindowLayout.sidebarMinWidth,
+              idealWidth: StatusWindowLayout.sidebarWidth,
+              maxWidth: StatusWindowLayout.sidebarMaxWidth
+            )
+
+          DetailView
+            .frame(
+              minWidth: StatusWindowLayout.minWidth - StatusWindowLayout.sidebarMaxWidth,
+              maxWidth: .infinity,
+              maxHeight: .infinity
+            )
+        }
+        .accessibilityIdentifier("statusCenter.splitView")
+      }
     }
     .frame(minWidth: StatusWindowLayout.minWidth, minHeight: StatusWindowLayout.minHeight)
     .onAppear {
@@ -102,7 +125,7 @@ private struct StatusCenterView: View {
       SidebarContent
       SidebarEdgeGradient
     }
-    .frame(width: SidebarWidth, alignment: .leading)
+    .frame(maxHeight: .infinity, alignment: .leading)
     .clipped()
     .background(Color(nsColor: NSColor.windowBackgroundColor))
     .animation(SidebarAnimation, value: isSidebarCollapsed)
@@ -111,11 +134,29 @@ private struct StatusCenterView: View {
   @ViewBuilder
   private var SidebarContent: some View {
     if isSidebarCollapsed {
-      VStack {
+      VStack(spacing: 8) {
         StatusCenterSidebarToggleButton(isCollapsed: true, action: ToggleSidebar)
           .padding(.top, 10)
 
-        Spacer()
+        Divider()
+          .padding(.horizontal, 8)
+
+        ScrollView(.vertical) {
+          VStack(spacing: 6) {
+            ForEach(model.endpointRows, id: \.endpointId) { row in
+              StatusCenterCollapsedRuntimeButton(
+                row: row,
+                isSelected: row.endpointId == selectedEndpointId
+              ) {
+                selectedEndpointId = row.endpointId
+              }
+            }
+          }
+          .padding(.vertical, 2)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        Spacer(minLength: 0)
       }
       .frame(width: StatusWindowLayout.collapsedSidebarWidth)
       .transition(.opacity.combined(with: .move(edge: .leading)))
@@ -147,7 +188,7 @@ private struct StatusCenterView: View {
           .padding(.horizontal, 10)
           .padding(.bottom, 10)
       }
-      .frame(width: StatusWindowLayout.sidebarWidth)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
       .transition(.opacity.combined(with: .move(edge: .leading)))
     }
   }
@@ -163,10 +204,6 @@ private struct StatusCenterView: View {
     )
     .frame(width: isSidebarCollapsed ? 14 : 28)
     .allowsHitTesting(false)
-  }
-
-  private var SidebarWidth: CGFloat {
-    isSidebarCollapsed ? StatusWindowLayout.collapsedSidebarWidth : StatusWindowLayout.sidebarWidth
   }
 
   private var SidebarAnimation: Animation {
@@ -198,6 +235,7 @@ private struct StatusCenterView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       }
       .accessibilityIdentifier("statusCenter.detail")
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     } else {
       ContentUnavailableView {
         Label("No Codex runtimes", systemImage: "server.rack")
@@ -205,6 +243,7 @@ private struct StatusCenterView: View {
         Text("Run codex in a terminal to populate the status center.")
       }
       .accessibilityIdentifier("statusCenter.empty")
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
   }
 
@@ -215,7 +254,7 @@ private struct StatusCenterView: View {
     {
       return row
     }
-    return rows.first
+    return nil
   }
 
   private func SelectDefaultEndpointIfNeeded() {
@@ -232,6 +271,40 @@ private struct StatusCenterView: View {
     withAnimation(SidebarAnimation) {
       isSidebarCollapsed.toggle()
     }
+  }
+}
+
+private struct StatusCenterCollapsedRuntimeButton: View {
+  let row: EndpointRow
+  let isSelected: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      ZStack(alignment: .bottomTrailing) {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+          .frame(width: 30, height: 30)
+
+        Image(systemName: row.activeTurn == nil ? "terminal" : "play.circle.fill")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(row.activeTurn == nil ? Color.secondary : Color.green)
+
+        Circle()
+          .fill(row.activeTurn == nil ? Color.secondary.opacity(0.55) : Color.green)
+          .frame(width: 6, height: 6)
+          .overlay(
+            Circle()
+              .stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1)
+          )
+          .offset(x: -3, y: -3)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(row.displayName)
+    .accessibilityLabel("Select \(row.displayName)")
+    .accessibilityIdentifier("statusCenter.collapsedRuntime.\(row.endpointId)")
   }
 }
 
