@@ -274,48 +274,12 @@ final class AppServerClient: @unchecked Sendable {
     var activeTurnKeysByEndpoint: [String: [String]] = [:]
 
     for runtime in runtimes {
-      guard
-        let runtimeId = NonEmptyString(runtime["runtimeId"])
-          ?? NonEmptyString(runtime["runtime_id"])
-      else {
+      guard let summary = DispatchRuntimeSnapshotOnQueue(runtime, fromSnapshot: true) else {
         continue
       }
 
-      endpointIds.insert(runtimeId)
-
-      var metadataParams: [String: Any] = ["endpointId": runtimeId]
-      if let cwd = runtime["cwd"] as? String {
-        metadataParams["cwd"] = cwd
-      }
-      if let sessionSource = runtime["sessionSource"] as? String ?? runtime["session_source"]
-        as? String
-      {
-        metadataParams["sessionSource"] = sessionSource
-      }
-      DispatchNotification(method: "runtime/metadata", params: metadataParams)
-
-      let activeTurns = runtime["activeTurns"] as? [[String: Any]] ?? []
-      for activeTurn in activeTurns {
-        guard
-          let threadId = NonEmptyString(activeTurn["threadId"]),
-          let turnId = NonEmptyString(activeTurn["turnId"])
-        else {
-          continue
-        }
-
-        activeTurnKeysByEndpoint[runtimeId, default: []].append("\(runtimeId):\(turnId)")
-
-        let params: [String: Any] = [
-          "threadId": threadId,
-          "turn": [
-            "id": turnId,
-            "status": "inProgress",
-          ],
-          "endpointId": runtimeId,
-          "fromSnapshot": true,
-        ]
-        DispatchNotification(method: "turn/started", params: params)
-      }
+      endpointIds.insert(summary.runtimeId)
+      activeTurnKeysByEndpoint[summary.runtimeId] = summary.activeTurnKeys
     }
 
     EmitSnapshotSummariesOnQueue(
@@ -336,15 +300,77 @@ final class AppServerClient: @unchecked Sendable {
 
     for endpointId in summaryEndpointIds {
       let activeTurnKeys = (activeTurnKeysByEndpoint[endpointId] ?? []).sorted()
-      DispatchNotification(
-        method: "thread/snapshotSummary",
-        params: [
-          "endpointId": endpointId,
-          "activeTurnKeys": activeTurnKeys,
-        ])
+      DispatchSnapshotSummaryOnQueue(endpointId: endpointId, activeTurnKeys: activeTurnKeys)
     }
 
     summaryKnownEndpointIds = endpointIds
+  }
+
+  private func DispatchRuntimeSnapshotOnQueue(
+    _ runtime: [String: Any],
+    fromSnapshot: Bool
+  ) -> (runtimeId: String, activeTurnKeys: [String])? {
+    guard
+      let runtimeId = NonEmptyString(runtime["runtimeId"])
+        ?? NonEmptyString(runtime["runtime_id"])
+    else {
+      return nil
+    }
+
+    var metadataParams: [String: Any] = ["endpointId": runtimeId]
+    if let cwd = runtime["cwd"] as? String {
+      metadataParams["cwd"] = cwd
+    }
+    if let sessionSource = runtime["sessionSource"] as? String ?? runtime["session_source"]
+      as? String
+    {
+      metadataParams["sessionSource"] = sessionSource
+    }
+    DispatchNotification(method: "runtime/metadata", params: metadataParams)
+
+    var activeTurnKeys: [String] = []
+    let activeTurns = runtime["activeTurns"] as? [[String: Any]] ?? []
+    for activeTurn in activeTurns {
+      guard
+        let threadId = NonEmptyString(activeTurn["threadId"])
+          ?? NonEmptyString(activeTurn["thread_id"]),
+        let turnId = NonEmptyString(activeTurn["turnId"]) ?? NonEmptyString(activeTurn["turn_id"])
+      else {
+        continue
+      }
+
+      let turnKey =
+        NonEmptyString(activeTurn["turnKey"])
+        ?? NonEmptyString(activeTurn["turn_key"])
+        ?? "\(threadId):\(turnId)"
+      activeTurnKeys.append("\(runtimeId):\(turnKey)")
+
+      var turn = activeTurn
+      turn["id"] = turnId
+      if turn["status"] == nil {
+        turn["status"] = "inProgress"
+      }
+
+      DispatchNotification(
+        method: "turn/started",
+        params: [
+          "threadId": threadId,
+          "turn": turn,
+          "endpointId": runtimeId,
+          "fromSnapshot": fromSnapshot,
+        ])
+    }
+
+    return (runtimeId, activeTurnKeys)
+  }
+
+  private func DispatchSnapshotSummaryOnQueue(endpointId: String, activeTurnKeys: [String]) {
+    DispatchNotification(
+      method: "thread/snapshotSummary",
+      params: [
+        "endpointId": endpointId,
+        "activeTurnKeys": activeTurnKeys,
+      ])
   }
 
   private func HandleCodexdEventOnQueue(_ params: [String: Any]) {
@@ -363,26 +389,19 @@ final class AppServerClient: @unchecked Sendable {
     switch eventType {
     case "runtimeUpsert":
       guard let runtime = event["runtime"] as? [String: Any],
-        let runtimeId = NonEmptyString(runtime["runtimeId"])
-          ?? NonEmptyString(runtime["runtime_id"])
+        let summary = DispatchRuntimeSnapshotOnQueue(runtime, fromSnapshot: false)
       else {
         return
       }
+      let runtimeId = summary.runtimeId
 
       knownEndpointIds.insert(runtimeId)
       summaryKnownEndpointIds.insert(runtimeId)
       DispatchEndpointIds(Array(knownEndpointIds).sorted())
-
-      var metadataParams: [String: Any] = ["endpointId": runtimeId]
-      if let cwd = runtime["cwd"] as? String {
-        metadataParams["cwd"] = cwd
-      }
-      if let sessionSource = runtime["sessionSource"] as? String ?? runtime["session_source"]
-        as? String
-      {
-        metadataParams["sessionSource"] = sessionSource
-      }
-      DispatchNotification(method: "runtime/metadata", params: metadataParams)
+      DispatchSnapshotSummaryOnQueue(
+        endpointId: runtimeId,
+        activeTurnKeys: summary.activeTurnKeys.sorted()
+      )
 
     case "runtimeRemoved":
       guard
