@@ -87,8 +87,12 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
 
     let runtimeList = app.descendants(matching: .any)["statusCenter.runtimeList"]
+    let resizeHandle = app.descendants(matching: .any)["statusCenter.sidebarResizeHandle"]
     XCTAssertTrue(runtimeList.waitForExistence(timeout: 5))
+    XCTAssertTrue(resizeHandle.waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["Runtimes"].exists)
+    let compactSidebarWidth = resizeHandle.frame.midX - statusWindow.frame.minX
+    XCTAssertLessThanOrEqual(compactSidebarWidth, 245)
 
     let sidebarToggle = app.buttons["statusCenter.sidebarToggle"]
     XCTAssertTrue(sidebarToggle.waitForExistence(timeout: 5))
@@ -104,8 +108,57 @@ final class MenuBarUISmokeTests: XCTestCase {
     expandToggle.click()
 
     XCTAssertTrue(runtimeList.waitForExistence(timeout: 5))
+    XCTAssertTrue(resizeHandle.waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["Runtimes"].exists)
+    let expandedSidebarWidth = resizeHandle.frame.midX - statusWindow.frame.minX
+    XCTAssertLessThan(abs(expandedSidebarWidth - compactSidebarWidth), 10)
     AttachScreenshot(named: "status-center-sidebar-expanded", app: app)
+  }
+
+  func testStatusCenterTokenUsageHistoryBrowsesEarlierTurns() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let position = app.descendants(matching: .any)[
+      "turn.tokenUsageHistory.position.fixture-endpoint"]
+    XCTAssertTrue(position.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "1 of 3"))
+
+    let title = app.descendants(matching: .any)["turn.tokenUsageHistory.title.fixture-endpoint"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+
+    let earlierButton = app.buttons["turn.tokenUsageHistory.earlier.fixture-endpoint"]
+    XCTAssertTrue(earlierButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(earlierButton.isEnabled)
+    earlierButton.click()
+
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 3"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Latest completed turn"))
+
+    let detail = app.descendants(matching: .any)["turn.tokenUsageHistory.detail.fixture-endpoint"]
+    XCTAssertTrue(detail.waitForExistence(timeout: 5))
+    XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 18.2k"))
+
+    earlierButton.click()
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "3 of 3"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Earlier turn"))
+
+    let newerButton = app.buttons["turn.tokenUsageHistory.newer.fixture-endpoint"]
+    XCTAssertTrue(newerButton.waitForExistence(timeout: 5))
+    newerButton.click()
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 3"))
+
+    AttachScreenshot(named: "status-center-token-history", app: app)
   }
 
   func testStatusCenterEmptyStateIsCenteredWithoutRuntimes() throws {

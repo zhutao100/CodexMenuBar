@@ -6,10 +6,11 @@ private enum StatusWindowLayout {
   static let height: CGFloat = 560
   static let minWidth: CGFloat = 640
   static let minHeight: CGFloat = 460
-  static let sidebarWidth: CGFloat = 260
-  static let sidebarMinWidth: CGFloat = 220
+  static let sidebarDefaultWidth: CGFloat = 224
+  static let sidebarMinWidth: CGFloat = 200
   static let sidebarMaxWidth: CGFloat = 360
   static let collapsedSidebarWidth: CGFloat = 44
+  static let sidebarResizeHandleWidth: CGFloat = 6
 }
 
 @MainActor
@@ -78,6 +79,8 @@ private struct StatusCenterView: View {
 
   @State private var selectedEndpointId: String?
   @State private var isSidebarCollapsed = false
+  @State private var expandedSidebarWidth = StatusWindowLayout.sidebarDefaultWidth
+  @State private var sidebarResizeStartWidth: CGFloat?
 
   var body: some View {
     let _ = model.viewRefreshToken
@@ -92,22 +95,23 @@ private struct StatusCenterView: View {
           DetailView
         }
       } else {
-        HSplitView {
+        HStack(spacing: 0) {
           SidebarView
-            .frame(
-              minWidth: StatusWindowLayout.sidebarMinWidth,
-              idealWidth: StatusWindowLayout.sidebarWidth,
-              maxWidth: StatusWindowLayout.sidebarMaxWidth
-            )
+            .frame(width: expandedSidebarWidth)
+
+          StatusCenterSidebarResizeHandle(
+            onDrag: ResizeExpandedSidebar,
+            onEnd: FinishExpandedSidebarResize
+          )
 
           DetailView
             .frame(
-              minWidth: StatusWindowLayout.minWidth - StatusWindowLayout.sidebarMaxWidth,
+              minWidth: StatusWindowLayout.minWidth - StatusWindowLayout.sidebarMaxWidth
+                - StatusWindowLayout.sidebarResizeHandleWidth,
               maxWidth: .infinity,
               maxHeight: .infinity
             )
         }
-        .accessibilityIdentifier("statusCenter.splitView")
       }
     }
     .frame(minWidth: StatusWindowLayout.minWidth, minHeight: StatusWindowLayout.minHeight)
@@ -231,6 +235,7 @@ private struct StatusCenterView: View {
           onTogglePastRuns: {},
           onOpenInTerminal: onOpenTerminal
         )
+        .id(row.endpointId)
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
@@ -271,6 +276,61 @@ private struct StatusCenterView: View {
     withAnimation(SidebarAnimation) {
       isSidebarCollapsed.toggle()
     }
+  }
+
+  private func SetExpandedSidebarWidth(_ width: CGFloat) {
+    guard !isSidebarCollapsed, width > 0 else {
+      return
+    }
+
+    let clampedWidth = min(
+      StatusWindowLayout.sidebarMaxWidth,
+      max(StatusWindowLayout.sidebarMinWidth, width)
+    )
+    guard abs(expandedSidebarWidth - clampedWidth) > 0.5 else {
+      return
+    }
+    expandedSidebarWidth = clampedWidth
+  }
+
+  private func ResizeExpandedSidebar(translation: CGFloat) {
+    if sidebarResizeStartWidth == nil {
+      sidebarResizeStartWidth = expandedSidebarWidth
+    }
+    SetExpandedSidebarWidth((sidebarResizeStartWidth ?? expandedSidebarWidth) + translation)
+  }
+
+  private func FinishExpandedSidebarResize() {
+    sidebarResizeStartWidth = nil
+  }
+}
+
+private struct StatusCenterSidebarResizeHandle: View {
+  let onDrag: (CGFloat) -> Void
+  let onEnd: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Rectangle()
+      .fill(Color(nsColor: NSColor.separatorColor).opacity(isHovering ? 0.55 : 0.28))
+      .frame(width: StatusWindowLayout.sidebarResizeHandleWidth)
+      .contentShape(Rectangle())
+      .gesture(
+        DragGesture(minimumDistance: 0)
+          .onChanged { value in
+            onDrag(value.translation.width)
+          }
+          .onEnded { _ in
+            onEnd()
+          }
+      )
+      .onHover { hovering in
+        isHovering = hovering
+      }
+      .help("Resize sidebar")
+      .accessibilityLabel("Resize sidebar")
+      .accessibilityIdentifier("statusCenter.sidebarResizeHandle")
   }
 }
 

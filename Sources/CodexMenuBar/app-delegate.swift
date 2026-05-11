@@ -398,6 +398,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     model.SetEndpointIds([endpointId])
     turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
+    SeedCompletedUITestTurn(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: "fixture-turn-bootstrap",
+      prompt: "Set up an initial status center scaffold.",
+      startedAt: now.addingTimeInterval(-4_200),
+      endedAt: now.addingTimeInterval(-4_020),
+      tokenUsage: TokenUsageInfo(
+        inputTokens: 9_600,
+        cachedInputTokens: 2_400,
+        outputTokens: 1_500,
+        reasoningTokens: 620,
+        totalTokens: 11_100,
+        contextWindow: 128_000
+      ),
+      command: "swift test --filter TurnStoreHistoryTests",
+      changedPath: "Tests/CodexMenuBarTests/turn-store-history-tests.swift"
+    )
+    SeedCompletedUITestTurn(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: "fixture-turn-status-center",
+      prompt: "Add a resizable status center sidebar.",
+      startedAt: now.addingTimeInterval(-2_400),
+      endedAt: now.addingTimeInterval(-2_190),
+      tokenUsage: TokenUsageInfo(
+        inputTokens: 18_200,
+        cachedInputTokens: 7_100,
+        outputTokens: 2_650,
+        reasoningTokens: 1_100,
+        totalTokens: 20_850,
+        contextWindow: 128_000
+      ),
+      command: "./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination platform=macOS",
+      changedPath: "Sources/CodexMenuBar/status-window-controller.swift"
+    )
     turnStore.ApplyThreadSnapshot(
       endpointId: endpointId,
       thread: [
@@ -499,6 +535,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     model.SyncSectionDisclosureState()
     model.InvalidateView()
+  }
+
+  private func SeedCompletedUITestTurn(
+    endpointId: String,
+    threadId: String,
+    turnId: String,
+    prompt: String,
+    startedAt: Date,
+    endedAt: Date,
+    tokenUsage: TokenUsageInfo,
+    command: String,
+    changedPath: String
+  ) {
+    turnStore.UpsertTurnStarted(
+      endpointId: endpointId, threadId: threadId, turnId: turnId, at: startedAt)
+    turnStore.UpdateTurnMetadata(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      turn: [
+        "model": "gpt-5-codex",
+        "modelProvider": "OpenAI",
+        "thinkingLevel": "medium",
+        "items": [
+          [
+            "type": "user_message",
+            "content": prompt,
+          ]
+        ],
+      ],
+      at: startedAt
+    )
+    turnStore.RecordProgress(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      category: .reasoning,
+      state: .started,
+      label: "Reviewing implementation path",
+      at: startedAt.addingTimeInterval(12)
+    )
+    turnStore.RecordProgress(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      category: .tool,
+      state: .started,
+      label: "Running verification",
+      at: startedAt.addingTimeInterval(54)
+    )
+    turnStore.RecordCommand(
+      endpointId: endpointId,
+      turnId: turnId,
+      command: CommandSummary(
+        command: command,
+        status: .completed,
+        exitCode: 0,
+        durationMs: Int(max(1.0, endedAt.timeIntervalSince(startedAt)) * 1000)
+      )
+    )
+    turnStore.RecordFileChange(
+      endpointId: endpointId,
+      turnId: turnId,
+      change: FileChangeSummary(path: changedPath, kind: .update)
+    )
+    turnStore.UpdateTokenUsage(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      tokenUsageTotal: nil,
+      tokenUsageLast: tokenUsage
+    )
+    turnStore.MarkTurnCompleted(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      status: .completed,
+      at: endedAt
+    )
   }
 
   private func ArgumentValue(after option: String) -> String? {

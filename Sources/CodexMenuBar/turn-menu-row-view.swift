@@ -17,6 +17,8 @@ struct TurnMenuRowView: View {
   let onTogglePastRuns: () -> Void
   let onOpenInTerminal: (String) -> Void
 
+  @State private var selectedTokenHistoryIndex = 0
+
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Button(action: onToggle) {
@@ -43,7 +45,7 @@ struct TurnMenuRowView: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .accessibilityIdentifier("turn.toggle.\(endpointRow.endpointId)")
+      .accessibilityIdentifier("turn.row.\(endpointRow.endpointId)")
 
       if activeTurn != nil {
         Text(TimelineSummaryText())
@@ -84,7 +86,6 @@ struct TurnMenuRowView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 10)
     .padding(.vertical, 8)
-    .accessibilityIdentifier("turn.row.\(endpointRow.endpointId)")
     .background(
       Color(nsColor: NSColor.controlBackgroundColor).opacity(0.78),
       in: RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -102,6 +103,9 @@ struct TurnMenuRowView: View {
             onToggle()
           }
       }
+    }
+    .onChange(of: endpointRow.endpointId) { _, _ in
+      selectedTokenHistoryIndex = 0
     }
     .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isExpanded)
   }
@@ -141,23 +145,13 @@ struct TurnMenuRowView: View {
           .lineLimit(1)
       }
 
-      if let usage = EffectiveLastTurnTokenUsage() {
-        SectionCard {
-          Label(LastTurnTokenTitle(usage: usage), systemImage: "chart.bar.fill")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-        } content: {
-          VStack(alignment: .leading, spacing: 4) {
-            TokenUsageBarView(usage: usage)
-              .frame(maxWidth: .infinity)
-              .frame(height: 12)
-
-            Text(TokenDetail(usage: usage))
-              .font(.system(size: 10, design: .monospaced))
-              .foregroundStyle(.tertiary)
-              .lineLimit(1)
-          }
-        }
+      let tokenHistoryEntries = TokenUsageHistoryEntries()
+      if !tokenHistoryEntries.isEmpty {
+        TokenUsageHistoryCard(
+          endpointId: endpointRow.endpointId,
+          entries: tokenHistoryEntries,
+          selectedIndex: $selectedTokenHistoryIndex
+        )
       }
 
       if let usage = SessionTokenUsage() {
@@ -171,7 +165,7 @@ struct TurnMenuRowView: View {
               .frame(maxWidth: .infinity)
               .frame(height: 12)
 
-            Text(TokenDetail(usage: usage))
+            Text(TokenUsageDetailText(usage))
               .font(.system(size: 10, design: .monospaced))
               .foregroundStyle(.tertiary)
               .lineLimit(1)
@@ -377,6 +371,75 @@ struct TurnMenuRowView: View {
     return usage
   }
 
+  private func TokenUsageHistoryEntries() -> [TokenUsageHistoryEntry] {
+    var entries: [TokenUsageHistoryEntry] = []
+    var seenTurnIds: Set<String> = []
+
+    if let usage = EffectiveLastTurnTokenUsage() {
+      let turnId = activeTurn?.turnId ?? endpointRow.turnId ?? "latest"
+      seenTurnIds.insert(TurnIdentity(threadId: endpointRow.threadId, turnId: turnId))
+      entries.append(
+        TokenUsageHistoryEntry(
+          id: "latest:\(endpointRow.endpointId):\(turnId)",
+          title: activeTurn == nil ? "Latest turn" : "Current turn",
+          subtitle: TokenUsageHistoryPrimarySubtitle(),
+          usage: usage
+        )
+      )
+    }
+
+    for (index, run) in endpointRow.recentRuns.enumerated() {
+      guard let usage = run.tokenUsage, usage.totalTokens > 0 else {
+        continue
+      }
+
+      let turnIdentity = TurnIdentity(threadId: run.threadId, turnId: run.turnId)
+      guard !seenTurnIds.contains(turnIdentity) else {
+        continue
+      }
+      seenTurnIds.insert(turnIdentity)
+
+      entries.append(
+        TokenUsageHistoryEntry(
+          id: "run:\(run.runKey)",
+          title: index == 0 ? "Latest completed turn" : "Earlier turn",
+          subtitle:
+            "\(RunStatusText(run.status)) · \(run.ElapsedString()) · \(run.RanAtString())",
+          usage: usage
+        )
+      )
+    }
+
+    return entries
+  }
+
+  private func TokenUsageHistoryPrimarySubtitle() -> String {
+    var values: [String] = []
+    if let turnId = activeTurn?.turnId ?? endpointRow.turnId {
+      values.append("Turn \(Truncate(turnId, limit: 18))")
+    }
+    if let chatTurnCount = endpointRow.chatTurnCount, chatTurnCount > 0 {
+      values.append("\(chatTurnCount) chat turn\(chatTurnCount == 1 ? "" : "s")")
+    }
+    if values.isEmpty {
+      return "Most recent reported turn"
+    }
+    return values.joined(separator: " · ")
+  }
+
+  private func TurnIdentity(threadId: String?, turnId: String) -> String {
+    "\(threadId ?? "no-thread"):\(turnId)"
+  }
+
+  private func RunStatusText(_ status: TurnExecutionStatus) -> String {
+    switch status {
+    case .inProgress: return "Working"
+    case .completed: return "Completed"
+    case .interrupted: return "Interrupted"
+    case .failed: return "Failed"
+    }
+  }
+
   private func HasGitOrModelInfo() -> Bool {
     endpointRow.activeTurn != nil && (endpointRow.gitInfo?.branch != nil || ModelSummary() != nil)
   }
@@ -426,28 +489,8 @@ struct TurnMenuRowView: View {
     return trimmed.replacingOccurrences(of: "_", with: "-")
   }
 
-  private func LastTurnTokenTitle(usage: TokenUsageInfo) -> String {
-    if let contextWindow = usage.contextWindow {
-      return
-        "Last Turn Token Usage - \(FormatTokenCount(usage.totalTokens)) / \(FormatTokenCount(contextWindow))"
-    }
-    return "Last Turn Token Usage - \(FormatTokenCount(usage.totalTokens))"
-  }
-
   private func SessionTokenTitle(usage: TokenUsageInfo) -> String {
     "Session Token Usage - \(FormatTokenCount(usage.totalTokens))"
-  }
-
-  private func TokenDetail(usage: TokenUsageInfo) -> String {
-    var values = ["In: \(FormatTokenCount(usage.inputTokens))"]
-    if usage.cachedInputTokens > 0 {
-      values[0] += " (\(FormatTokenCount(usage.cachedInputTokens)) cached)"
-    }
-    values.append("Out: \(FormatTokenCount(usage.outputTokens))")
-    if usage.reasoningTokens > 0 {
-      values.append("Reasoning: \(FormatTokenCount(usage.reasoningTokens))")
-    }
-    return values.joined(separator: " · ")
   }
 
   private func PlanTitle() -> String {
@@ -547,6 +590,116 @@ struct TurnMenuRowView: View {
   }
 }
 
+private struct TokenUsageHistoryEntry: Identifiable, Equatable {
+  let id: String
+  let title: String
+  let subtitle: String
+  let usage: TokenUsageInfo
+}
+
+private struct TokenUsageHistoryCard: View {
+  let endpointId: String
+  let entries: [TokenUsageHistoryEntry]
+  @Binding var selectedIndex: Int
+
+  var body: some View {
+    if let entry = SelectedEntry {
+      SectionCard {
+        HStack(spacing: 6) {
+          Label("Turn Token Usage", systemImage: "chart.bar.fill")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+
+          Spacer(minLength: 4)
+
+          if entries.count > 1 {
+            Text("\(ClampedSelectedIndex + 1) of \(entries.count)")
+              .font(.system(size: 9, weight: .medium, design: .monospaced))
+              .foregroundStyle(.tertiary)
+              .accessibilityLabel("\(ClampedSelectedIndex + 1) of \(entries.count)")
+              .accessibilityIdentifier("turn.tokenUsageHistory.position.\(endpointId)")
+
+            Button(action: ShowNewerEntry) {
+              Image(systemName: "chevron.left")
+                .font(.system(size: 9, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .disabled(ClampedSelectedIndex == 0)
+            .help("Show newer turn token usage")
+            .accessibilityLabel("Show newer turn token usage")
+            .accessibilityIdentifier("turn.tokenUsageHistory.newer.\(endpointId)")
+
+            Button(action: ShowEarlierEntry) {
+              Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .disabled(ClampedSelectedIndex >= entries.count - 1)
+            .help("Show earlier turn token usage")
+            .accessibilityLabel("Show earlier turn token usage")
+            .accessibilityIdentifier("turn.tokenUsageHistory.earlier.\(endpointId)")
+          }
+        }
+      } content: {
+        VStack(alignment: .leading, spacing: 4) {
+          HStack(spacing: 6) {
+            Text(entry.title)
+              .font(.system(size: 10, weight: .medium))
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+              .accessibilityIdentifier("turn.tokenUsageHistory.title.\(endpointId)")
+
+            Spacer(minLength: 4)
+
+            Text(FormatTokenCount(entry.usage.totalTokens))
+              .font(.system(size: 10, weight: .medium, design: .monospaced))
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+          }
+
+          Text(entry.subtitle)
+            .font(.system(size: 9))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .accessibilityIdentifier("turn.tokenUsageHistory.subtitle.\(endpointId)")
+
+          TokenUsageBarView(usage: entry.usage)
+            .frame(maxWidth: .infinity)
+            .frame(height: 12)
+
+          Text(TokenUsageDetailText(entry.usage))
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .accessibilityIdentifier("turn.tokenUsageHistory.detail.\(endpointId)")
+        }
+      }
+    }
+  }
+
+  private var SelectedEntry: TokenUsageHistoryEntry? {
+    guard !entries.isEmpty else {
+      return nil
+    }
+    return entries[ClampedSelectedIndex]
+  }
+
+  private var ClampedSelectedIndex: Int {
+    guard !entries.isEmpty else {
+      return 0
+    }
+    return min(max(0, selectedIndex), entries.count - 1)
+  }
+
+  private func ShowNewerEntry() {
+    selectedIndex = max(0, ClampedSelectedIndex - 1)
+  }
+
+  private func ShowEarlierEntry() {
+    selectedIndex = min(entries.count - 1, ClampedSelectedIndex + 1)
+  }
+}
+
 private struct RunHistoryRowView: View {
   let run: CompletedRun
   let fallbackModel: String?
@@ -639,7 +792,7 @@ private struct RunHistoryRowView: View {
               .frame(maxWidth: .infinity)
               .frame(height: 10)
 
-            Text(TokenDetail(usage: usage))
+            Text(TokenUsageDetailText(usage))
               .font(.system(size: 10, design: .monospaced))
               .foregroundStyle(.tertiary)
               .lineLimit(1)
@@ -718,22 +871,6 @@ private struct RunHistoryRowView: View {
     }
 
     return nil
-  }
-
-  private func TokenDetail(usage: TokenUsageInfo) -> String {
-    var values = ["In: \(FormatTokenCount(usage.inputTokens))"]
-
-    if usage.cachedInputTokens > 0 {
-      values[0] += " (\(FormatTokenCount(usage.cachedInputTokens)) cached)"
-    }
-
-    values.append("Out: \(FormatTokenCount(usage.outputTokens))")
-
-    if usage.reasoningTokens > 0 {
-      values.append("Reasoning: \(FormatTokenCount(usage.reasoningTokens))")
-    }
-
-    return values.joined(separator: " · ")
   }
 
   private func NonEmpty(_ value: String?) -> String? {
@@ -1139,6 +1276,18 @@ private let clockTimeFormatter: DateFormatter = {
   formatter.dateStyle = .none
   return formatter
 }()
+
+private func TokenUsageDetailText(_ usage: TokenUsageInfo) -> String {
+  var values = ["In: \(FormatTokenCount(usage.inputTokens))"]
+  if usage.cachedInputTokens > 0 {
+    values[0] += " (\(FormatTokenCount(usage.cachedInputTokens)) cached)"
+  }
+  values.append("Out: \(FormatTokenCount(usage.outputTokens))")
+  if usage.reasoningTokens > 0 {
+    values.append("Reasoning: \(FormatTokenCount(usage.reasoningTokens))")
+  }
+  return values.joined(separator: " · ")
+}
 
 private func SegmentTooltipText(segment: TimelineSegment) -> String {
   let category = SegmentKindLabel(segment.kind)
