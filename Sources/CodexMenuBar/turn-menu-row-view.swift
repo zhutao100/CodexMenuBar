@@ -2,6 +2,71 @@ import AppKit
 import Foundation
 import SwiftUI
 
+private enum RuntimeHistoryPageSize {
+  static let files = 8
+  static let commands = 5
+  static let runs = 5
+}
+
+private struct RuntimeHistoryPage<Item> {
+  let items: [Item]
+  let page: Int
+  let pageSize: Int
+
+  var visibleItems: [Item] {
+    let range = range
+    guard !range.isEmpty else {
+      return []
+    }
+    return Array(items[range])
+  }
+
+  var positionText: String {
+    let range = range
+    guard !range.isEmpty else {
+      return "0 of 0"
+    }
+    return "\(range.lowerBound + 1)-\(range.upperBound) of \(items.count)"
+  }
+
+  var canShowNewer: Bool {
+    clampedPage > 0
+  }
+
+  var canShowOlder: Bool {
+    clampedPage < maxPage
+  }
+
+  var newerPage: Int {
+    max(0, clampedPage - 1)
+  }
+
+  var olderPage: Int {
+    min(maxPage, clampedPage + 1)
+  }
+
+  private var range: Range<Int> {
+    guard items.count > 0, pageSize > 0 else {
+      return 0..<0
+    }
+
+    let end = items.count - (clampedPage * pageSize)
+    let start = max(0, end - pageSize)
+    return start..<end
+  }
+
+  private var clampedPage: Int {
+    min(max(0, page), maxPage)
+  }
+
+  private var maxPage: Int {
+    guard items.count > 0, pageSize > 0 else {
+      return 0
+    }
+    return (items.count - 1) / pageSize
+  }
+}
+
 struct TurnMenuRowView: View {
   let endpointRow: EndpointRow
   let now: Date
@@ -18,6 +83,9 @@ struct TurnMenuRowView: View {
   let onOpenInTerminal: (String) -> Void
 
   @State private var selectedTokenHistoryIndex = 0
+  @State private var fileHistoryPage = 0
+  @State private var commandHistoryPage = 0
+  @State private var runHistoryPage = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -105,7 +173,10 @@ struct TurnMenuRowView: View {
       }
     }
     .onChange(of: endpointRow.endpointId) { _, _ in
-      selectedTokenHistoryIndex = 0
+      ResetHistorySelections()
+    }
+    .onChange(of: endpointRow.turnId ?? "") { _, _ in
+      ResetHistorySelections()
     }
     .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isExpanded)
   }
@@ -227,14 +298,28 @@ struct TurnMenuRowView: View {
       }
 
       if !VisibleFileChanges().isEmpty {
+        let filePage = FileHistoryPage()
         AccordionSectionCard(
           title: "Files (\(VisibleFileChanges().count))",
           systemImage: "doc.text.fill",
           isExpanded: isFilesExpanded,
           onToggle: onToggleFiles
         ) {
-          VStack(alignment: .leading, spacing: 2) {
-            ForEach(VisibleFileChanges().prefix(8), id: \.path) { change in
+          VStack(alignment: .leading, spacing: 4) {
+            if VisibleFileChanges().count > RuntimeHistoryPageSize.files {
+              HistoryPagerControls(
+                endpointId: endpointRow.endpointId,
+                namespace: "files",
+                label: "file history",
+                positionText: filePage.positionText,
+                canShowNewer: filePage.canShowNewer,
+                canShowOlder: filePage.canShowOlder,
+                onShowNewer: ShowNewerFiles,
+                onShowOlder: ShowOlderFiles
+              )
+            }
+
+            ForEach(filePage.visibleItems, id: \.path) { change in
               let filename = (change.path as NSString).lastPathComponent
               let dir = (change.path as NSString).deletingLastPathComponent
               let shortDir = dir.isEmpty ? "" : "\(dir)/"
@@ -248,14 +333,28 @@ struct TurnMenuRowView: View {
       }
 
       if !VisibleCommands().isEmpty {
+        let commandPage = CommandHistoryPage()
         AccordionSectionCard(
           title: "Commands / Tools Run (\(VisibleCommands().count))",
           systemImage: "terminal.fill",
           isExpanded: isCommandsExpanded,
           onToggle: onToggleCommands
         ) {
-          VStack(alignment: .leading, spacing: 2) {
-            ForEach(VisibleCommands().suffix(5), id: \.command) { command in
+          VStack(alignment: .leading, spacing: 4) {
+            if VisibleCommands().count > RuntimeHistoryPageSize.commands {
+              HistoryPagerControls(
+                endpointId: endpointRow.endpointId,
+                namespace: "commands",
+                label: "command history",
+                positionText: commandPage.positionText,
+                canShowNewer: commandPage.canShowNewer,
+                canShowOlder: commandPage.canShowOlder,
+                onShowNewer: ShowNewerCommands,
+                onShowOlder: ShowOlderCommands
+              )
+            }
+
+            ForEach(commandPage.visibleItems, id: \.command) { command in
               Text(CommandLine(command: command))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
@@ -266,6 +365,7 @@ struct TurnMenuRowView: View {
       }
 
       if !endpointRow.recentRuns.isEmpty {
+        let runPage = RunHistoryPage()
         AccordionSectionCard(
           title: "Past Runs (\(endpointRow.recentRuns.count))",
           systemImage: "clock.arrow.circlepath",
@@ -273,7 +373,20 @@ struct TurnMenuRowView: View {
           onToggle: onTogglePastRuns
         ) {
           VStack(spacing: 4) {
-            ForEach(endpointRow.recentRuns, id: \.runKey) { run in
+            if endpointRow.recentRuns.count > RuntimeHistoryPageSize.runs {
+              HistoryPagerControls(
+                endpointId: endpointRow.endpointId,
+                namespace: "runs",
+                label: "past run history",
+                positionText: runPage.positionText,
+                canShowNewer: runPage.canShowNewer,
+                canShowOlder: runPage.canShowOlder,
+                onShowNewer: ShowNewerRuns,
+                onShowOlder: ShowOlderRuns
+              )
+            }
+
+            ForEach(runPage.visibleItems, id: \.runKey) { run in
               RunHistoryRowView(
                 run: run,
                 fallbackModel: endpointRow.model,
@@ -415,8 +528,10 @@ struct TurnMenuRowView: View {
 
   private func TokenUsageHistoryPrimarySubtitle() -> String {
     var values: [String] = []
-    if let turnId = activeTurn?.turnId ?? endpointRow.turnId {
-      values.append("Turn \(Truncate(turnId, limit: 18))")
+    if activeTurn != nil {
+      values.append("Active now")
+    } else if endpointRow.turnId != nil {
+      values.append("Latest reported usage")
     }
     if let chatTurnCount = endpointRow.chatTurnCount, chatTurnCount > 0 {
       values.append("\(chatTurnCount) chat turn\(chatTurnCount == 1 ? "" : "s")")
@@ -518,6 +633,19 @@ struct TurnMenuRowView: View {
     return []
   }
 
+  private func FileHistoryPage() -> RuntimeHistoryPage<FileChangeSummary> {
+    RuntimeHistoryPage(
+      items: VisibleFileChanges(), page: fileHistoryPage, pageSize: RuntimeHistoryPageSize.files)
+  }
+
+  private func ShowNewerFiles() {
+    fileHistoryPage = FileHistoryPage().newerPage
+  }
+
+  private func ShowOlderFiles() {
+    fileHistoryPage = FileHistoryPage().olderPage
+  }
+
   private func VisibleCommands() -> [CommandSummary] {
     guard endpointRow.activeTurn != nil else {
       return []
@@ -528,6 +656,39 @@ struct TurnMenuRowView: View {
     }
 
     return []
+  }
+
+  private func CommandHistoryPage() -> RuntimeHistoryPage<CommandSummary> {
+    RuntimeHistoryPage(
+      items: VisibleCommands(), page: commandHistoryPage, pageSize: RuntimeHistoryPageSize.commands)
+  }
+
+  private func ShowNewerCommands() {
+    commandHistoryPage = CommandHistoryPage().newerPage
+  }
+
+  private func ShowOlderCommands() {
+    commandHistoryPage = CommandHistoryPage().olderPage
+  }
+
+  private func RunHistoryPage() -> RuntimeHistoryPage<CompletedRun> {
+    RuntimeHistoryPage(
+      items: endpointRow.recentRuns, page: runHistoryPage, pageSize: RuntimeHistoryPageSize.runs)
+  }
+
+  private func ShowNewerRuns() {
+    runHistoryPage = RunHistoryPage().newerPage
+  }
+
+  private func ShowOlderRuns() {
+    runHistoryPage = RunHistoryPage().olderPage
+  }
+
+  private func ResetHistorySelections() {
+    selectedTokenHistoryIndex = 0
+    fileHistoryPage = 0
+    commandHistoryPage = 0
+    runHistoryPage = 0
   }
 
   private func ErrorCopyText(_ error: ErrorInfo) -> String {
@@ -950,6 +1111,50 @@ private struct AccordionSectionCard<Content: View>: View {
       if isExpanded {
         content
       }
+    }
+  }
+}
+
+private struct HistoryPagerControls: View {
+  let endpointId: String
+  let namespace: String
+  let label: String
+  let positionText: String
+  let canShowNewer: Bool
+  let canShowOlder: Bool
+  let onShowNewer: () -> Void
+  let onShowOlder: () -> Void
+
+  var body: some View {
+    HStack(spacing: 6) {
+      Text(positionText)
+        .font(.system(size: 9, weight: .medium, design: .monospaced))
+        .foregroundStyle(.tertiary)
+        .lineLimit(1)
+        .accessibilityLabel(positionText)
+        .accessibilityIdentifier("turn.\(namespace)History.position.\(endpointId)")
+
+      Spacer(minLength: 4)
+
+      Button(action: onShowNewer) {
+        Image(systemName: "chevron.left")
+          .font(.system(size: 9, weight: .semibold))
+      }
+      .buttonStyle(.plain)
+      .disabled(!canShowNewer)
+      .help("Show newer \(label)")
+      .accessibilityLabel("Show newer \(label)")
+      .accessibilityIdentifier("turn.\(namespace)History.newer.\(endpointId)")
+
+      Button(action: onShowOlder) {
+        Image(systemName: "chevron.right")
+          .font(.system(size: 9, weight: .semibold))
+      }
+      .buttonStyle(.plain)
+      .disabled(!canShowOlder)
+      .help("Show older \(label)")
+      .accessibilityLabel("Show older \(label)")
+      .accessibilityIdentifier("turn.\(namespace)History.older.\(endpointId)")
     }
   }
 }

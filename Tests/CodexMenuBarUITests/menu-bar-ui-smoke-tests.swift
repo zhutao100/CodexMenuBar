@@ -137,6 +137,12 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(title.waitForExistence(timeout: 5))
     XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
 
+    let subtitle = app.descendants(matching: .any)[
+      "turn.tokenUsageHistory.subtitle.fixture-endpoint"]
+    XCTAssertTrue(subtitle.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: subtitle, equals: "Active now · 1 chat turn"))
+    XCTAssertFalse(String(describing: subtitle.value ?? "").contains("Turn 2"))
+
     let earlierButton = app.buttons["turn.tokenUsageHistory.earlier.fixture-endpoint"]
     XCTAssertTrue(earlierButton.waitForExistence(timeout: 5))
     XCTAssertTrue(earlierButton.isEnabled)
@@ -159,6 +165,50 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 3"))
 
     AttachScreenshot(named: "status-center-token-history", app: app)
+  }
+
+  func testStatusCenterRuntimeHistorySectionsBrowseOlderEntries() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let filePosition = app.descendants(matching: .any)[
+      "turn.filesHistory.position.fixture-endpoint"]
+    XCTAssertTrue(filePosition.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: filePosition, equals: "3-10 of 10"))
+
+    let olderFiles = app.buttons["turn.filesHistory.older.fixture-endpoint"]
+    XCTAssertTrue(olderFiles.waitForExistence(timeout: 5))
+    XCTAssertTrue(olderFiles.isEnabled)
+    olderFiles.click()
+    XCTAssertTrue(WaitForStringValue(of: filePosition, equals: "1-2 of 10"))
+
+    let newerFiles = app.buttons["turn.filesHistory.newer.fixture-endpoint"]
+    XCTAssertTrue(newerFiles.waitForExistence(timeout: 5))
+    XCTAssertTrue(newerFiles.isEnabled)
+    newerFiles.click()
+    XCTAssertTrue(WaitForStringValue(of: filePosition, equals: "3-10 of 10"))
+
+    let commandPosition = app.descendants(matching: .any)[
+      "turn.commandsHistory.position.fixture-endpoint"]
+    XCTAssertTrue(commandPosition.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: commandPosition, equals: "2-6 of 6"))
+
+    let olderCommands = app.buttons["turn.commandsHistory.older.fixture-endpoint"]
+    XCTAssertTrue(olderCommands.waitForExistence(timeout: 5))
+    XCTAssertTrue(olderCommands.isEnabled)
+    olderCommands.click()
+    XCTAssertTrue(WaitForStringValue(of: commandPosition, equals: "1-1 of 6"))
+
+    AttachScreenshot(named: "status-center-runtime-history-browsing", app: app)
   }
 
   func testStatusCenterEmptyStateIsCenteredWithoutRuntimes() throws {

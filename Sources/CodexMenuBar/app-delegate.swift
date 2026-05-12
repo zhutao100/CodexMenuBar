@@ -382,7 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let endpointId = "fixture-endpoint"
     let threadId = "fixture-thread"
-    let turnId = "fixture-turn"
+    let turnId = "2"
     let now = Date()
     let startedAt = now.addingTimeInterval(-96)
     let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
@@ -478,28 +478,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       label: "Running verification loop",
       at: startedAt.addingTimeInterval(34)
     )
-    turnStore.RecordCommand(
-      endpointId: endpointId,
-      turnId: turnId,
-      command: CommandSummary(
+    for command in [
+      CommandSummary(
+        command: "fd-x -t f -d 4 .",
+        status: .completed,
+        exitCode: 0,
+        durationMs: 170
+      ),
+      CommandSummary(
+        command: "rg-x -n \"Turn Token Usage\" Sources Tests",
+        status: .completed,
+        exitCode: 0,
+        durationMs: 240
+      ),
+      CommandSummary(
+        command: "sed-x -n '1,220p' Sources/CodexMenuBar/turn-menu-row-view.swift",
+        status: .completed,
+        exitCode: 0,
+        durationMs: 120
+      ),
+      CommandSummary(
+        command: "swift test --filter TurnStoreHistoryTests",
+        status: .completed,
+        exitCode: 0,
+        durationMs: 1_200
+      ),
+      CommandSummary(
+        command: "./scripts/build.sh",
+        status: .completed,
+        exitCode: 0,
+        durationMs: 8_400
+      ),
+      CommandSummary(
         command: "./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination platform=macOS",
         status: .inProgress,
         exitCode: nil,
         durationMs: nil
-      )
-    )
-    turnStore.RecordFileChange(
-      endpointId: endpointId,
-      turnId: turnId,
-      change: FileChangeSummary(
-        path: "Sources/CodexMenuBar/status-menu-controller.swift", kind: .update)
-    )
-    turnStore.RecordFileChange(
-      endpointId: endpointId,
-      turnId: turnId,
-      change: FileChangeSummary(
-        path: "Sources/CodexMenuBar/settings-window-controller.swift", kind: .update)
-    )
+      ),
+    ] {
+      turnStore.RecordCommand(endpointId: endpointId, turnId: turnId, command: command)
+    }
+    for change in [
+      FileChangeSummary(path: "Sources/CodexMenuBar/app-delegate.swift", kind: .update),
+      FileChangeSummary(path: "Sources/CodexMenuBar/menu-bar-view-model.swift", kind: .update),
+      FileChangeSummary(path: "Sources/CodexMenuBar/status-menu-controller.swift", kind: .update),
+      FileChangeSummary(path: "Sources/CodexMenuBar/status-window-controller.swift", kind: .update),
+      FileChangeSummary(
+        path: "Sources/CodexMenuBar/settings-window-controller.swift", kind: .update),
+      FileChangeSummary(path: "Sources/CodexMenuBar/turn-menu-row-view.swift", kind: .update),
+      FileChangeSummary(path: "Sources/CodexMenuBar/turn-store.swift", kind: .update),
+      FileChangeSummary(
+        path: "Tests/CodexMenuBarTests/menu-bar-view-model-tests.swift", kind: .update),
+      FileChangeSummary(
+        path: "Tests/CodexMenuBarTests/turn-store-history-tests.swift", kind: .update),
+      FileChangeSummary(
+        path: "Tests/CodexMenuBarUITests/menu-bar-ui-smoke-tests.swift", kind: .update),
+    ] {
+      turnStore.RecordFileChange(endpointId: endpointId, turnId: turnId, change: change)
+    }
     turnStore.UpdatePlan(
       endpointId: endpointId,
       turnId: turnId,

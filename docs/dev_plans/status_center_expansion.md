@@ -158,6 +158,7 @@ Track daemon-side work in `codex-rs/codexd/docs/dev_plans/menubar_status_hub_pre
 - A persistent Status Center window shows runtime navigation, selected turn details, and daemon diagnostics using the same state as the popover.
 - The Status Center sidebar starts compact, remains user-resizable, and restores the last expanded width after collapse/expand.
 - Runtime detail panes expose token usage as a browsable per-turn history when recent completed runs have usage data.
+- Runtime detail panes page through longer active-turn file, command, and recent-run histories with newest/older controls instead of truncating the only visible slice.
 - The UI remains read-only for daemon/runtime state; control actions are still gated on future runtime capabilities.
 - The daemon prerequisite plan has started with `codexd/hello`, summary-oriented `codexd/runtime/updateState`, and broader notification relay.
 
