@@ -11,14 +11,17 @@ set -euo pipefail
 #   VERIFY_FAST_MODE=auto|xcode|swiftpm (default: auto)
 #   PROJECT_OR_WORKSPACE=<path>   (optional override in xcode/auto mode)
 #   SCHEME=<name>                 (optional; defaults to the container basename)
-#   VERIFY_FAST_XCODE_SEARCH_DEPTH=<int> (optional; max find depth for Xcode container lookup, defaults to 4)
+#   VERIFY_FAST_XCODE_SEARCH_DEPTH=<int> (optional; max find depth for Xcode container lookup, defaults to 1)
 #   XCODE_CODE_SIGNING_ALLOWED=YES|NO (optional; default: NO for local verification)
 #   RUN_TESTS=0|1                 (optional; defaults to 1)
 #
-# Artifacts (repo root, ignored):
+# Logs (repo root, ignored):
 #   .artifacts/verify-fast/logs/build.log
 #   .artifacts/verify-fast/logs/test.log (when tests run)
-#   .artifacts/verify-fast/TestResults.xcresult (Xcode mode)
+#
+# Build/test artifacts (repo root, ignored):
+#   .build/xcode/DerivedData-style build products (Xcode mode)
+#   .build/verify-fast/TestResults.xcresult (Xcode mode)
 #
 # Verbosity:
 #   VERBOSE=1   stream tool output (default is low-noise)
@@ -34,9 +37,11 @@ if [[ "${INVOKE_DIR}" != "${ROOT}" && "${INVOKE_DIR}" != "${ROOT}/"* ]]; then
 fi
 
 ARTIFACTS_DIR="${VERIFY_FAST_ARTIFACTS_DIR:-$ROOT/.artifacts/verify-fast}"
+BUILD_ARTIFACTS_DIR="${VERIFY_FAST_BUILD_ARTIFACTS_DIR:-$ROOT/.build/verify-fast}"
 LOG_DIR="${ARTIFACTS_DIR}/logs"
+RESULT_BUNDLE_PATH="${BUILD_ARTIFACTS_DIR}/TestResults.xcresult"
 
-mkdir -p "${LOG_DIR}"
+mkdir -p "${LOG_DIR}" "${BUILD_ARTIFACTS_DIR}"
 
 VERIFY_FAST_MODE="${VERIFY_FAST_MODE:-auto}"
 PROJECT_OR_WORKSPACE="${PROJECT_OR_WORKSPACE:-}"
@@ -139,10 +144,10 @@ discover_xcode_container() {
   local workspaces=()
   local projects=()
   local path=""
-  local max_depth="${VERIFY_FAST_XCODE_SEARCH_DEPTH:-4}"
+  local max_depth="${VERIFY_FAST_XCODE_SEARCH_DEPTH:-1}"
 
   if ! [[ "${max_depth}" =~ ^[0-9]+$ ]] || ((max_depth < 1)); then
-    max_depth=4
+    max_depth=1
   fi
 
   while IFS= read -r path; do
@@ -159,7 +164,7 @@ discover_xcode_container() {
       ! -path '*/.swiftpm/*' \
       ! -path '*.xcodeproj/*' \
       -print \
-    | LC_ALL=C sort
+      | LC_ALL=C sort
   )
 
   while IFS= read -r path; do
@@ -174,7 +179,7 @@ discover_xcode_container() {
       ! -path '*/.artifacts/*' \
       ! -path '*/.swiftpm/*' \
       -print \
-    | LC_ALL=C sort
+      | LC_ALL=C sort
   )
 
   if [[ ${#workspaces[@]} -gt 1 ]]; then
@@ -231,7 +236,7 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && "${VERIFY_FAST_MODE}" != "swiftpm" ]]; the
     local_build_args+=( -project "${PROJECT_OR_WORKSPACE}" )
   fi
 
-  DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${ARTIFACTS_DIR}/DerivedData}"
+  DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${ROOT}/.build/xcode}"
 
   if [[ -z "${SEATBELT_SANDBOX_WORKSPACE_ROOT:-}" ]]; then
     export SEATBELT_SANDBOX_WORKSPACE_ROOT="${ROOT}"
@@ -258,8 +263,8 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && "${VERIFY_FAST_MODE}" != "swiftpm" ]]; the
   echo "[verify_fast] Running unit tests (optional; disable via RUN_TESTS=0)..."
   if [[ "${RUN_TESTS}" == "1" ]]; then
     echo "[verify_fast] Testing (log: ${TEST_LOG})..."
+    rm -rf "${RESULT_BUNDLE_PATH}"
     append_log_header "${TEST_LOG}" "xcodebuild test (${PROJECT_OR_WORKSPACE} :: ${SCHEME})"
-    rm -rf "${ARTIFACTS_DIR}/TestResults.xcresult"
     if ! run_logged "${TEST_LOG}" \
       xcodebuild \
         "${local_build_args[@]}" \
@@ -269,7 +274,7 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && "${VERIFY_FAST_MODE}" != "swiftpm" ]]; the
         CODE_SIGNING_ALLOWED="${XCODE_CODE_SIGNING_ALLOWED}" \
         -derivedDataPath "${DERIVED_DATA_PATH}" \
         test \
-      -resultBundlePath "${ARTIFACTS_DIR}/TestResults.xcresult"; then
+        -resultBundlePath "${RESULT_BUNDLE_PATH}"; then
       echo "[verify_fast] Tests failed (log: ${TEST_LOG})." >&2
       if [[ "${VERBOSE}" != "1" ]]; then
         dump_log_tail "${TEST_LOG}"
