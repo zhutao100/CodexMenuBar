@@ -541,13 +541,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       turnId: turnId,
       steps: [
         PlanStepInfo(description: "Audit current AppKit status item shell", status: .completed),
+        PlanStepInfo(description: "Trace live token updates from codexd", status: .completed),
+        PlanStepInfo(description: "Add current-turn token round browsing", status: .completed),
+        PlanStepInfo(description: "Page long plan histories in runtime panels", status: .completed),
+        PlanStepInfo(description: "Page active file and command histories", status: .completed),
         PlanStepInfo(description: "Stabilize popover sizing and active rows", status: .inProgress),
-        PlanStepInfo(description: "Verify screenshots and accessibility", status: .pending),
+        PlanStepInfo(description: "Run UI loop on macOS 15 VM", status: .pending),
+        PlanStepInfo(description: "Run UI loop on macOS 26 VM", status: .pending),
       ],
       explanation: "Fixture state for deterministic menu bar UI verification."
     )
     turnStore.UpdateGitInfo(
       endpointId: endpointId, gitInfo: GitInfo(branch: "main", sha: "fixture"))
+    turnStore.UpdateTokenUsage(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      tokenUsageTotal: TokenUsageInfo(
+        inputTokens: 24_800,
+        cachedInputTokens: 10_200,
+        outputTokens: 4_200,
+        reasoningTokens: 1_600,
+        totalTokens: 29_000,
+        contextWindow: 128_000
+      ),
+      tokenUsageLast: TokenUsageInfo(
+        inputTokens: 6_400,
+        cachedInputTokens: 3_200,
+        outputTokens: 1_100,
+        reasoningTokens: 420,
+        totalTokens: 7_500,
+        contextWindow: 128_000
+      ),
+      observedAt: startedAt.addingTimeInterval(36)
+    )
+    turnStore.UpdateTokenUsage(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      tokenUsageTotal: TokenUsageInfo(
+        inputTokens: 33_900,
+        cachedInputTokens: 14_700,
+        outputTokens: 6_000,
+        reasoningTokens: 2_350,
+        totalTokens: 39_900,
+        contextWindow: 128_000
+      ),
+      tokenUsageLast: TokenUsageInfo(
+        inputTokens: 9_100,
+        cachedInputTokens: 4_500,
+        outputTokens: 1_800,
+        reasoningTokens: 750,
+        totalTokens: 10_900,
+        contextWindow: 128_000
+      ),
+      observedAt: startedAt.addingTimeInterval(64)
+    )
     turnStore.UpdateTokenUsage(
       endpointId: endpointId,
       threadId: threadId,
@@ -567,7 +616,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reasoningTokens: 900,
         totalTokens: 15_800,
         contextWindow: 128_000
-      )
+      ),
+      observedAt: startedAt.addingTimeInterval(92)
     )
     model.SyncSectionDisclosureState()
     model.InvalidateView()
@@ -718,6 +768,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       HandleTurnStarted(params: params)
     case "turn/completed":
       HandleTurnCompleted(params: params)
+    case "turn/contextUpdated", "turn/stateUpdated":
+      HandleTurnContextUpdated(params: params)
     case "turn/progressTrace":
       HandleTurnProgressTrace(params: params)
     case "turn/plan/updated":
@@ -770,6 +822,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       endpointId: endpointId, threadId: threadId, turnId: turnId, at: Date())
     turnStore.UpdateTurnMetadata(
       endpointId: endpointId, threadId: threadId, turnId: turnId, turn: turn, at: Date())
+    ApplyTokenUsageIfPresent(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      payload: turn["tokenUsage"]
+    )
   }
 
   private func HandleTurnCompleted(params: [String: Any]) {
@@ -793,6 +851,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       )
       turnStore.UpdateTurnMetadata(
         endpointId: endpointId, threadId: threadId, turnId: turnId, turn: turn, at: Date())
+      ApplyTokenUsageIfPresent(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        payload: turn["tokenUsage"]
+      )
       return
     }
     turnStore.MarkTurnCompleted(
@@ -804,6 +868,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     turnStore.UpdateTurnMetadata(
       endpointId: endpointId, threadId: threadId, turnId: turnId, turn: turn, at: Date())
+    ApplyTokenUsageIfPresent(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      payload: turn["tokenUsage"]
+    )
+  }
+
+  private func HandleTurnContextUpdated(params: [String: Any]) {
+    let endpointId = params["endpointId"] as? String ?? "unknown"
+    guard let turnId = StringValue(params["turnId"]) ?? StringValue(params["turn_id"]) else {
+      return
+    }
+    let threadId = ResolveThreadId(params: params, endpointId: endpointId, turnId: turnId)
+
+    turnStore.UpdateTurnMetadata(
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turn: params, at: Date())
+    ApplyTokenUsageIfPresent(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      payload: params["tokenUsage"]
+    )
   }
 
   private func HandleThreadSnapshot(params: [String: Any]) {
@@ -961,40 +1048,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let threadId = StringValue(params["threadId"]) ?? StringValue(params["thread_id"])
     let turnId = StringValue(params["turnId"]) ?? StringValue(params["turn_id"])
 
-    func ParseInfo(_ dict: [String: Any]) -> TokenUsageInfo {
-      var info = TokenUsageInfo()
-      info.totalTokens = dict["totalTokens"] as? Int ?? dict["total_tokens"] as? Int ?? 0
-      info.inputTokens = dict["inputTokens"] as? Int ?? dict["input_tokens"] as? Int ?? 0
-      info.cachedInputTokens =
-        dict["cachedInputTokens"] as? Int ?? dict["cached_input_tokens"] as? Int ?? 0
-      info.outputTokens = dict["outputTokens"] as? Int ?? dict["output_tokens"] as? Int ?? 0
-      info.reasoningTokens =
-        dict["reasoningOutputTokens"] as? Int ?? dict["reasoning_output_tokens"] as? Int ?? 0
-      return info
-    }
-
-    var totalInfo: TokenUsageInfo?
-    if let total = usage["total"] as? [String: Any] {
-      totalInfo = ParseInfo(total)
-      totalInfo?.contextWindow = nil
-    }
-
-    var lastInfo: TokenUsageInfo?
-    if let last = usage["last"] as? [String: Any] {
-      lastInfo = ParseInfo(last)
-    }
-
-    let contextWindow =
-      usage["modelContextWindow"] as? Int ?? usage["model_context_window"] as? Int
-    lastInfo?.contextWindow = contextWindow
+    let parsedUsage = ParseThreadTokenUsage(usage)
 
     turnStore.UpdateTokenUsage(
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
-      tokenUsageTotal: totalInfo,
-      tokenUsageLast: lastInfo
+      tokenUsageTotal: parsedUsage.total,
+      tokenUsageLast: parsedUsage.last
     )
+  }
+
+  private func ApplyTokenUsageIfPresent(
+    endpointId: String,
+    threadId: String?,
+    turnId: String,
+    payload: Any?
+  ) {
+    guard let usage = payload as? [String: Any] else {
+      return
+    }
+    let parsedUsage = ParseThreadTokenUsage(usage)
+    turnStore.UpdateTokenUsage(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      tokenUsageTotal: parsedUsage.total,
+      tokenUsageLast: parsedUsage.last
+    )
+  }
+
+  private func ParseThreadTokenUsage(_ usage: [String: Any]) -> (
+    total: TokenUsageInfo?, last: TokenUsageInfo?
+  ) {
+    var totalInfo: TokenUsageInfo?
+    let contextWindow =
+      usage["modelContextWindow"] as? Int ?? usage["model_context_window"] as? Int
+    if let total = usage["total"] as? [String: Any] {
+      totalInfo = ParseTokenUsageBreakdown(total)
+      totalInfo?.contextWindow = contextWindow
+    }
+
+    var lastInfo: TokenUsageInfo?
+    if let last = usage["last"] as? [String: Any] {
+      lastInfo = ParseTokenUsageBreakdown(last)
+      lastInfo?.contextWindow = contextWindow
+    }
+
+    return (totalInfo, lastInfo)
+  }
+
+  private func ParseTokenUsageBreakdown(_ dict: [String: Any]) -> TokenUsageInfo {
+    var info = TokenUsageInfo()
+    info.totalTokens = dict["totalTokens"] as? Int ?? dict["total_tokens"] as? Int ?? 0
+    info.inputTokens = dict["inputTokens"] as? Int ?? dict["input_tokens"] as? Int ?? 0
+    info.cachedInputTokens =
+      dict["cachedInputTokens"] as? Int ?? dict["cached_input_tokens"] as? Int ?? 0
+    info.outputTokens = dict["outputTokens"] as? Int ?? dict["output_tokens"] as? Int ?? 0
+    info.reasoningTokens =
+      dict["reasoningOutputTokens"] as? Int ?? dict["reasoning_output_tokens"] as? Int ?? 0
+    return info
   }
 
   private func HandleTurnPlanUpdated(params: [String: Any]) {

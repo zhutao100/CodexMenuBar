@@ -92,6 +92,11 @@ struct TokenUsageInfo: Equatable {
   }
 }
 
+struct TokenUsageSample: Equatable {
+  let usage: TokenUsageInfo
+  let observedAt: Date
+}
+
 struct ErrorInfo: Equatable {
   let message: String
   let details: String?
@@ -223,6 +228,7 @@ struct EndpointMetadata {
   var lastEventAt: Date?
   var tokenUsageTotal: TokenUsageInfo?
   var tokenUsageLast: TokenUsageInfo?
+  var tokenUsageSamples: [TokenUsageSample] = []
   var latestError: ErrorInfo?
   var gitInfo: GitInfo?
   var rateLimits: RateLimitInfo?
@@ -247,6 +253,7 @@ struct EndpointRow {
   let lastEventAt: Date?
   let tokenUsageTotal: TokenUsageInfo?
   let tokenUsageLast: TokenUsageInfo?
+  let tokenUsageSamples: [TokenUsageSample]
   let latestError: ErrorInfo?
   let fileChanges: [FileChangeSummary]
   let commands: [CommandSummary]
@@ -283,6 +290,7 @@ struct CompletedRun: Equatable {
   let modelProvider: String?
   let thinkingLevel: String?
   let tokenUsage: TokenUsageInfo?
+  let tokenUsageSamples: [TokenUsageSample]
   let fileChanges: [FileChangeSummary]
   let commands: [CommandSummary]
   let traceHistory: [ProgressTraceSnapshot]
@@ -334,6 +342,7 @@ final class ActiveTurn {
   private(set) var commands: [CommandSummary] = []
   private(set) var planSteps: [PlanStepInfo] = []
   private(set) var planExplanation: String?
+  private(set) var tokenUsageSamples: [TokenUsageSample] = []
 
   init(endpointId: String, threadId: String?, turnId: String, startedAt: Date) {
     self.endpointId = endpointId
@@ -426,6 +435,10 @@ final class ActiveTurn {
     }
   }
 
+  func RecordTokenUsage(_ usage: TokenUsageInfo, at now: Date) {
+    AppendTokenUsageSample(usage, at: now, to: &tokenUsageSamples)
+  }
+
   func ActiveCategories() -> [ProgressCategory] {
     let running =
       categoryCounts
@@ -512,6 +525,26 @@ func FormatTokenCount(_ count: Int) -> String {
     return String(format: "%.1fk", value)
   }
   return "\(count)"
+}
+
+func AppendTokenUsageSample(
+  _ usage: TokenUsageInfo,
+  at now: Date,
+  to samples: inout [TokenUsageSample],
+  maxSamples: Int = 50
+) {
+  guard usage.totalTokens > 0 else {
+    return
+  }
+
+  if samples.last?.usage == usage {
+    return
+  }
+
+  samples.append(TokenUsageSample(usage: usage, observedAt: now))
+  if samples.count > maxSamples {
+    samples.removeFirst(samples.count - maxSamples)
+  }
 }
 
 private func FormatElapsedDuration(_ elapsed: TimeInterval) -> String {

@@ -11,6 +11,7 @@ It connects to a single local `codexd` daemon, and renders authoritative active 
 - Menu bar icon state for connected/running/error.
 - Left-click popover and right-click context menu from the status item.
 - Persistent Status Center window for browsing current runtimes and turn details.
+- Runtime detail history controls for current-turn token rounds, completed-turn token usage, long plans, files, commands, and past runs.
 - Settings window for session-only `codexd` socket overrides and reconnects.
 - Launch-at-login control in Settings, backed by `SMAppService.mainApp` for signed app bundles.
 - Daemon diagnostics in the popover, including socket path, protocol version, event sequence, and runtime count.

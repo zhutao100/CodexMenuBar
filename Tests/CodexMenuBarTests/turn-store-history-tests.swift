@@ -144,6 +144,94 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].recentRuns[0].tokenUsage, usage)
   }
 
+  func testTokenUsageUpdatesKeepPerTurnSampleHistory() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let second = start.addingTimeInterval(8)
+    let third = start.addingTimeInterval(16)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    var firstUsage = TokenUsageInfo()
+    firstUsage.totalTokens = 100
+    firstUsage.inputTokens = 70
+    firstUsage.outputTokens = 30
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: firstUsage,
+      observedAt: second
+    )
+
+    var laterUsage = TokenUsageInfo()
+    laterUsage.totalTokens = 160
+    laterUsage.inputTokens = 100
+    laterUsage.outputTokens = 60
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: laterUsage,
+      observedAt: third
+    )
+
+    let activeRows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(activeRows[0].tokenUsageSamples.map(\.usage), [firstUsage, laterUsage])
+    XCTAssertEqual(activeRows[0].tokenUsageSamples.map(\.observedAt), [second, third])
+
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: .completed,
+      at: third.addingTimeInterval(2)
+    )
+
+    let completedRows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(completedRows[0].recentRuns[0].tokenUsage, laterUsage)
+    XCTAssertEqual(
+      completedRows[0].recentRuns[0].tokenUsageSamples.map(\.usage),
+      [
+        firstUsage, laterUsage,
+      ])
+  }
+
+  func testTokenUsageSampleHistorySkipsDuplicateConsecutiveUpdates() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    var usage = TokenUsageInfo()
+    usage.totalTokens = 100
+    usage.inputTokens = 70
+    usage.outputTokens = 30
+
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: usage,
+      observedAt: start.addingTimeInterval(1)
+    )
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: usage,
+      observedAt: start.addingTimeInterval(2)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].tokenUsageSamples.count, 1)
+    XCTAssertEqual(rows[0].tokenUsageSamples[0].observedAt, start.addingTimeInterval(1))
+  }
+
   func testApplyItemMetadataExtractsPromptPreviewFromStringAndArrayContent() {
     let store = TurnStore()
     let now = Date(timeIntervalSince1970: 1_700_000_000)

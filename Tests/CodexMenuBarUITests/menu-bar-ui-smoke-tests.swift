@@ -131,7 +131,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     let position = app.descendants(matching: .any)[
       "turn.tokenUsageHistory.position.fixture-endpoint"]
     XCTAssertTrue(position.waitForExistence(timeout: 5))
-    XCTAssertTrue(WaitForStringValue(of: position, equals: "1 of 3"))
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "1 of 5"))
 
     let title = app.descendants(matching: .any)["turn.tokenUsageHistory.title.fixture-endpoint"]
     XCTAssertTrue(title.waitForExistence(timeout: 5))
@@ -140,7 +140,8 @@ final class MenuBarUISmokeTests: XCTestCase {
     let subtitle = app.descendants(matching: .any)[
       "turn.tokenUsageHistory.subtitle.fixture-endpoint"]
     XCTAssertTrue(subtitle.waitForExistence(timeout: 5))
-    XCTAssertTrue(WaitForStringValue(of: subtitle, equals: "Active now · 1 chat turn"))
+    XCTAssertTrue(
+      WaitForStringValueContaining(of: subtitle, text: "Round 3 of 3 · Active now · 1 chat turn"))
     XCTAssertFalse(String(describing: subtitle.value ?? "").contains("Turn 2"))
 
     let earlierButton = app.buttons["turn.tokenUsageHistory.earlier.fixture-endpoint"]
@@ -148,21 +149,30 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(earlierButton.isEnabled)
     earlierButton.click()
 
-    XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 3"))
-    XCTAssertTrue(WaitForStringValue(of: title, equals: "Latest completed turn"))
-
     let detail = app.descendants(matching: .any)["turn.tokenUsageHistory.detail.fixture-endpoint"]
     XCTAssertTrue(detail.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 5"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+    XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 9.1k"))
+
+    earlierButton.click()
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "3 of 5"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+    XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 6.4k"))
+
+    earlierButton.click()
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "4 of 5"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Latest completed turn"))
     XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 18.2k"))
 
     earlierButton.click()
-    XCTAssertTrue(WaitForStringValue(of: position, equals: "3 of 3"))
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "5 of 5"))
     XCTAssertTrue(WaitForStringValue(of: title, equals: "Earlier turn"))
 
     let newerButton = app.buttons["turn.tokenUsageHistory.newer.fixture-endpoint"]
     XCTAssertTrue(newerButton.waitForExistence(timeout: 5))
     newerButton.click()
-    XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 3"))
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "4 of 5"))
 
     AttachScreenshot(named: "status-center-token-history", app: app)
   }
@@ -179,6 +189,17 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     let statusWindow = app.windows["Codex Status Center"]
     XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let planPosition = app.descendants(matching: .any)[
+      "turn.planHistory.position.fixture-endpoint"]
+    XCTAssertTrue(planPosition.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: planPosition, equals: "3-8 of 8"))
+
+    let olderPlan = app.buttons["turn.planHistory.older.fixture-endpoint"]
+    XCTAssertTrue(olderPlan.waitForExistence(timeout: 5))
+    XCTAssertTrue(olderPlan.isEnabled)
+    olderPlan.click()
+    XCTAssertTrue(WaitForStringValue(of: planPosition, equals: "1-2 of 8"))
 
     let filePosition = app.descendants(matching: .any)[
       "turn.filesHistory.position.fixture-endpoint"]
@@ -471,6 +492,18 @@ final class MenuBarUISmokeTests: XCTestCase {
     -> Bool
   {
     let predicate = NSPredicate(format: "value == %@", expected)
+    let expectation = expectation(for: predicate, evaluatedWith: element)
+    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func WaitForStringValueContaining(
+    of element: XCUIElement,
+    text expected: String,
+    timeout: TimeInterval = 5
+  )
+    -> Bool
+  {
+    let predicate = NSPredicate(format: "value CONTAINS %@", expected)
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
   }

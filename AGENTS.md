@@ -29,6 +29,8 @@ The menu bar popover keeps global actions as icon buttons in the title row with 
 
 The Status Center sidebar starts compact, is resizable when expanded, restores the last expanded width after collapse/expand, and still switches runtimes through collapsed icon buttons. Preserve the centered `No Codex runtimes` detail empty state when no runtime is selected.
 
+Runtime detail panes keep interactive history controls compact: token usage browses newest/older samples across current-turn rounds and completed turns; long plan, file, command, past-run, and expanded-run histories page instead of silently truncating.
+
 Icon assets: the app bundle icon is `Sources/CodexMenuBar/Resources/Assets.xcassets/AppIcon.appiconset`, generated from `Resources/svgs/codex-app.svg`; the menu bar template icon loads from `Resources/svgs/codex.svg`. Keep the SVGs valid when replacing icons, then regenerate the Xcode project.
 
 ## Sandboxed tests (macos-sandbox-testing)
@@ -43,7 +45,6 @@ Unit tests (SwiftPM and Xcode) are guarded by an in-process Seatbelt sandbox to 
 This repo uses `prek` to run `.pre-commit-config.yaml` hooks for `CodexMenuBar/**`.
 
 - One-time hook setup: `git config core.hooksPath .githooks && prek prepare-hooks`
-- Run on all tracked files (scoped to `CodexMenuBar/**` by config): `prek run --all-files`
 
 ## Development plans
 

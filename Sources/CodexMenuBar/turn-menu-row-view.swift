@@ -3,6 +3,7 @@ import Foundation
 import SwiftUI
 
 private enum RuntimeHistoryPageSize {
+  static let planSteps = 6
   static let files = 8
   static let commands = 5
   static let runs = 5
@@ -83,6 +84,7 @@ struct TurnMenuRowView: View {
   let onOpenInTerminal: (String) -> Void
 
   @State private var selectedTokenHistoryIndex = 0
+  @State private var planHistoryPage = 0
   @State private var fileHistoryPage = 0
   @State private var commandHistoryPage = 0
   @State private var runHistoryPage = 0
@@ -281,17 +283,32 @@ struct TurnMenuRowView: View {
       }
 
       if !endpointRow.planSteps.isEmpty {
+        let planPage = PlanHistoryPage()
         SectionCard {
           Label(PlanTitle(), systemImage: "checklist")
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.secondary)
         } content: {
-          VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(endpointRow.planSteps.prefix(6).enumerated()), id: \.offset) { _, step in
+          VStack(alignment: .leading, spacing: 4) {
+            if endpointRow.planSteps.count > RuntimeHistoryPageSize.planSteps {
+              HistoryPagerControls(
+                endpointId: endpointRow.endpointId,
+                namespace: "plan",
+                label: "plan history",
+                positionText: planPage.positionText,
+                canShowNewer: planPage.canShowNewer,
+                canShowOlder: planPage.canShowOlder,
+                onShowNewer: ShowNewerPlanSteps,
+                onShowOlder: ShowOlderPlanSteps
+              )
+            }
+
+            ForEach(Array(planPage.visibleItems.enumerated()), id: \.offset) { _, step in
               Text("\(PlanIcon(step.status))  \(Truncate(step.description, limit: 52))")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .accessibilityIdentifier("turn.planHistory.step.\(endpointRow.endpointId)")
             }
           }
         }
@@ -479,6 +496,18 @@ struct TurnMenuRowView: View {
     return usage
   }
 
+  private func EffectiveTokenUsageSamples() -> [TokenUsageSample] {
+    let samples = endpointRow.tokenUsageSamples.filter { $0.usage.totalTokens > 0 }
+    if !samples.isEmpty {
+      return samples
+    }
+
+    guard let usage = EffectiveLastTurnTokenUsage(), usage.totalTokens > 0 else {
+      return []
+    }
+    return [TokenUsageSample(usage: usage, observedAt: endpointRow.lastEventAt ?? now)]
+  }
+
   private func SessionTokenUsage() -> TokenUsageInfo? {
     guard let usage = endpointRow.tokenUsageTotal, usage.totalTokens > 0 else { return nil }
     return usage
@@ -488,21 +517,46 @@ struct TurnMenuRowView: View {
     var entries: [TokenUsageHistoryEntry] = []
     var seenTurnIds: Set<String> = []
 
-    if let usage = EffectiveLastTurnTokenUsage() {
+    let effectiveSamples = EffectiveTokenUsageSamples()
+    if !effectiveSamples.isEmpty {
+      let turnId = activeTurn?.turnId ?? endpointRow.turnId ?? "latest"
+      seenTurnIds.insert(TurnIdentity(threadId: endpointRow.threadId, turnId: turnId))
+
+      let newestFirstSamples = Array(effectiveSamples.enumerated().reversed())
+      for (index, sample) in newestFirstSamples {
+        entries.append(
+          TokenUsageHistoryEntry(
+            id: "latest:\(endpointRow.endpointId):\(turnId):\(index)",
+            title: activeTurn == nil ? "Latest turn" : "Current turn",
+            subtitle: TokenUsageHistoryPrimarySubtitle(
+              sampleIndex: index,
+              sampleCount: effectiveSamples.count,
+              observedAt: sample.observedAt
+            ),
+            usage: sample.usage
+          )
+        )
+      }
+    } else if let usage = EffectiveLastTurnTokenUsage() {
       let turnId = activeTurn?.turnId ?? endpointRow.turnId ?? "latest"
       seenTurnIds.insert(TurnIdentity(threadId: endpointRow.threadId, turnId: turnId))
       entries.append(
         TokenUsageHistoryEntry(
           id: "latest:\(endpointRow.endpointId):\(turnId)",
           title: activeTurn == nil ? "Latest turn" : "Current turn",
-          subtitle: TokenUsageHistoryPrimarySubtitle(),
+          subtitle: TokenUsageHistoryPrimarySubtitle(
+            sampleIndex: nil,
+            sampleCount: 0,
+            observedAt: endpointRow.lastEventAt
+          ),
           usage: usage
         )
       )
     }
 
     for (index, run) in endpointRow.recentRuns.enumerated() {
-      guard let usage = run.tokenUsage, usage.totalTokens > 0 else {
+      let runSamples = RunTokenUsageSamples(run)
+      guard !runSamples.isEmpty else {
         continue
       }
 
@@ -512,22 +566,36 @@ struct TurnMenuRowView: View {
       }
       seenTurnIds.insert(turnIdentity)
 
-      entries.append(
-        TokenUsageHistoryEntry(
-          id: "run:\(run.runKey)",
-          title: index == 0 ? "Latest completed turn" : "Earlier turn",
-          subtitle:
-            "\(RunStatusText(run.status)) · \(run.ElapsedString()) · \(run.RanAtString())",
-          usage: usage
+      let newestFirstSamples = Array(runSamples.enumerated().reversed())
+      for (sampleIndex, sample) in newestFirstSamples {
+        entries.append(
+          TokenUsageHistoryEntry(
+            id: "run:\(run.runKey):\(sampleIndex)",
+            title: index == 0 ? "Latest completed turn" : "Earlier turn",
+            subtitle: RunTokenUsageSubtitle(
+              run: run,
+              sampleIndex: sampleIndex,
+              sampleCount: runSamples.count,
+              observedAt: sample.observedAt
+            ),
+            usage: sample.usage
+          )
         )
-      )
+      }
     }
 
     return entries
   }
 
-  private func TokenUsageHistoryPrimarySubtitle() -> String {
+  private func TokenUsageHistoryPrimarySubtitle(
+    sampleIndex: Int?,
+    sampleCount: Int,
+    observedAt: Date?
+  ) -> String {
     var values: [String] = []
+    if let sampleIndex, sampleCount > 1 {
+      values.append("Round \(sampleIndex + 1) of \(sampleCount)")
+    }
     if activeTurn != nil {
       values.append("Active now")
     } else if endpointRow.turnId != nil {
@@ -536,9 +604,37 @@ struct TurnMenuRowView: View {
     if let chatTurnCount = endpointRow.chatTurnCount, chatTurnCount > 0 {
       values.append("\(chatTurnCount) chat turn\(chatTurnCount == 1 ? "" : "s")")
     }
+    if let observedAt {
+      values.append("Updated \(FormatClockTime(observedAt))")
+    }
     if values.isEmpty {
       return "Most recent reported turn"
     }
+    return values.joined(separator: " · ")
+  }
+
+  private func RunTokenUsageSamples(_ run: CompletedRun) -> [TokenUsageSample] {
+    let samples = run.tokenUsageSamples.filter { $0.usage.totalTokens > 0 }
+    if !samples.isEmpty {
+      return samples
+    }
+    guard let usage = run.tokenUsage, usage.totalTokens > 0 else {
+      return []
+    }
+    return [TokenUsageSample(usage: usage, observedAt: run.endedAt)]
+  }
+
+  private func RunTokenUsageSubtitle(
+    run: CompletedRun,
+    sampleIndex: Int,
+    sampleCount: Int,
+    observedAt: Date
+  ) -> String {
+    var values = [RunStatusText(run.status), run.ElapsedString(), run.RanAtString()]
+    if sampleCount > 1 {
+      values.insert("Round \(sampleIndex + 1) of \(sampleCount)", at: 1)
+    }
+    values.append("Updated \(FormatClockTime(observedAt))")
     return values.joined(separator: " · ")
   }
 
@@ -621,6 +717,20 @@ struct TurnMenuRowView: View {
     }
   }
 
+  private func PlanHistoryPage() -> RuntimeHistoryPage<PlanStepInfo> {
+    RuntimeHistoryPage(
+      items: endpointRow.planSteps, page: planHistoryPage,
+      pageSize: RuntimeHistoryPageSize.planSteps)
+  }
+
+  private func ShowNewerPlanSteps() {
+    planHistoryPage = PlanHistoryPage().newerPage
+  }
+
+  private func ShowOlderPlanSteps() {
+    planHistoryPage = PlanHistoryPage().olderPage
+  }
+
   private func VisibleFileChanges() -> [FileChangeSummary] {
     guard endpointRow.activeTurn != nil else {
       return []
@@ -686,6 +796,7 @@ struct TurnMenuRowView: View {
 
   private func ResetHistorySelections() {
     selectedTokenHistoryIndex = 0
+    planHistoryPage = 0
     fileHistoryPage = 0
     commandHistoryPage = 0
     runHistoryPage = 0
@@ -870,6 +981,9 @@ private struct RunHistoryRowView: View {
   let isExpanded: Bool
   let onToggle: () -> Void
 
+  @State private var fileHistoryPage = 0
+  @State private var commandHistoryPage = 0
+
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       Button(action: onToggle) {
@@ -919,12 +1033,26 @@ private struct RunHistoryRowView: View {
             .frame(height: 8)
 
           if !run.fileChanges.isEmpty {
+            let filePage = FileHistoryPage()
             VStack(alignment: .leading, spacing: 2) {
               Text("Files touched:")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.tertiary)
 
-              ForEach(run.fileChanges.prefix(5), id: \.path) { change in
+              if run.fileChanges.count > RuntimeHistoryPageSize.files {
+                HistoryPagerControls(
+                  endpointId: run.runKey,
+                  namespace: "runFiles",
+                  label: "run file history",
+                  positionText: filePage.positionText,
+                  canShowNewer: filePage.canShowNewer,
+                  canShowOlder: filePage.canShowOlder,
+                  onShowNewer: ShowNewerFiles,
+                  onShowOlder: ShowOlderFiles
+                )
+              }
+
+              ForEach(filePage.visibleItems, id: \.path) { change in
                 Text("\(change.kind.label)  \((change.path as NSString).lastPathComponent)")
                   .font(.system(size: 10))
                   .foregroundStyle(.secondary)
@@ -934,12 +1062,26 @@ private struct RunHistoryRowView: View {
           }
 
           if !run.commands.isEmpty {
+            let commandPage = CommandHistoryPage()
             VStack(alignment: .leading, spacing: 2) {
               Text("Commands:")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.tertiary)
 
-              ForEach(run.commands.prefix(5), id: \.command) { command in
+              if run.commands.count > RuntimeHistoryPageSize.commands {
+                HistoryPagerControls(
+                  endpointId: run.runKey,
+                  namespace: "runCommands",
+                  label: "run command history",
+                  positionText: commandPage.positionText,
+                  canShowNewer: commandPage.canShowNewer,
+                  canShowOlder: commandPage.canShowOlder,
+                  onShowNewer: ShowNewerCommands,
+                  onShowOlder: ShowOlderCommands
+                )
+              }
+
+              ForEach(commandPage.visibleItems, id: \.command) { command in
                 Text("• \(command.command)")
                   .font(.system(size: 10))
                   .foregroundStyle(.secondary)
@@ -978,11 +1120,41 @@ private struct RunHistoryRowView: View {
           }
       }
     }
+    .onChange(of: run.runKey) { _, _ in
+      fileHistoryPage = 0
+      commandHistoryPage = 0
+    }
   }
 
   private func TitleText() -> String {
     let suffix = isLastRun ? " · latest" : ""
     return "\(StatusText(run.status)) · \(run.ElapsedString()) · \(run.RanAtString())\(suffix)"
+  }
+
+  private func FileHistoryPage() -> RuntimeHistoryPage<FileChangeSummary> {
+    RuntimeHistoryPage(
+      items: run.fileChanges, page: fileHistoryPage, pageSize: RuntimeHistoryPageSize.files)
+  }
+
+  private func ShowNewerFiles() {
+    fileHistoryPage = FileHistoryPage().newerPage
+  }
+
+  private func ShowOlderFiles() {
+    fileHistoryPage = FileHistoryPage().olderPage
+  }
+
+  private func CommandHistoryPage() -> RuntimeHistoryPage<CommandSummary> {
+    RuntimeHistoryPage(
+      items: run.commands, page: commandHistoryPage, pageSize: RuntimeHistoryPageSize.commands)
+  }
+
+  private func ShowNewerCommands() {
+    commandHistoryPage = CommandHistoryPage().newerPage
+  }
+
+  private func ShowOlderCommands() {
+    commandHistoryPage = CommandHistoryPage().olderPage
   }
 
   private func StatusText(_ status: TurnExecutionStatus) -> String {
