@@ -277,7 +277,7 @@ final class TurnStore {
 
     let runTokenUsage = tokenUsageLast ?? tokenUsageTotal
     if let runTokenUsage {
-      AppendTokenUsageSample(runTokenUsage, at: observedAt, to: &metadata.tokenUsageSamples)
+      AppendTokenUsageRoundSample(runTokenUsage, at: observedAt, to: &metadata.tokenUsageSamples)
       let key = TurnKey(endpointId: endpointId, turnId: turnId)
       turnsByKey[key]?.RecordTokenUsage(runTokenUsage, at: observedAt)
     }
@@ -306,7 +306,8 @@ final class TurnStore {
       return
     }
     var runTokenUsageSamples = run.tokenUsageSamples
-    AppendTokenUsageSample(runTokenUsage, at: observedAt, to: &runTokenUsageSamples)
+    AppendTokenUsageRoundSample(runTokenUsage, at: observedAt, to: &runTokenUsageSamples)
+    let updatedRunTokenUsage = runTokenUsage.isTurnRoundUsage ? runTokenUsage : run.tokenUsage
     runs[index] = CompletedRun(
       endpointId: run.endpointId,
       threadId: run.threadId,
@@ -319,7 +320,7 @@ final class TurnStore {
       model: run.model,
       modelProvider: run.modelProvider,
       thinkingLevel: run.thinkingLevel,
-      tokenUsage: runTokenUsage,
+      tokenUsage: updatedRunTokenUsage,
       tokenUsageSamples: runTokenUsageSamples,
       fileChanges: run.fileChanges,
       commands: run.commands,
@@ -535,6 +536,7 @@ final class TurnStore {
       metadata?.turnId == turn.turnId ? metadata?.tokenUsageSamples ?? [] : []
     let tokenUsageSamples =
       turn.tokenUsageSamples.isEmpty ? metadataTokenSamples : turn.tokenUsageSamples
+    let tokenUsage = tokenUsageSamples.last?.usage ?? metadata?.tokenUsageLast
     runs.insert(
       CompletedRun(
         endpointId: turn.endpointId,
@@ -548,7 +550,7 @@ final class TurnStore {
         model: metadata?.model,
         modelProvider: metadata?.modelProvider,
         thinkingLevel: metadata?.thinkingLevel,
-        tokenUsage: tokenUsageSamples.last?.usage ?? metadata?.tokenUsageLast,
+        tokenUsage: tokenUsage?.isTurnRoundUsage == true ? tokenUsage : nil,
         tokenUsageSamples: tokenUsageSamples,
         fileChanges: turn.fileChanges,
         commands: turn.commands,

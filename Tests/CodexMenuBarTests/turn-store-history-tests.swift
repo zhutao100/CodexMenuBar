@@ -232,6 +232,107 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].tokenUsageSamples[0].observedAt, start.addingTimeInterval(1))
   }
 
+  func testTokenUsageRoundHistorySkipsContextEstimateUpdates() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    for index in 0..<60 {
+      var estimate = TokenUsageInfo()
+      estimate.totalTokens = 10_000 + index
+      estimate.contextWindow = 128_000
+      store.UpdateTokenUsage(
+        endpointId: "ep-1",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        tokenUsageTotal: nil,
+        tokenUsageLast: estimate,
+        observedAt: start.addingTimeInterval(Double(index))
+      )
+    }
+
+    var firstRound = TokenUsageInfo()
+    firstRound.totalTokens = 1_200
+    firstRound.inputTokens = 900
+    firstRound.cachedInputTokens = 300
+    firstRound.outputTokens = 300
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: firstRound,
+      observedAt: start.addingTimeInterval(61)
+    )
+
+    var secondRound = TokenUsageInfo()
+    secondRound.totalTokens = 1_700
+    secondRound.inputTokens = 1_100
+    secondRound.outputTokens = 600
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: secondRound,
+      observedAt: start.addingTimeInterval(62)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].tokenUsageLast?.totalTokens, 1_700)
+    XCTAssertEqual(rows[0].tokenUsageSamples.map(\.usage), [firstRound, secondRound])
+    XCTAssertEqual(
+      rows[0].tokenUsageSamples.map(\.observedAt),
+      [
+        start.addingTimeInterval(61),
+        start.addingTimeInterval(62),
+      ])
+  }
+
+  func testContextEstimateDoesNotOverwriteArchivedRoundUsage() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    var roundUsage = TokenUsageInfo()
+    roundUsage.totalTokens = 1_200
+    roundUsage.inputTokens = 800
+    roundUsage.outputTokens = 400
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: roundUsage,
+      observedAt: start.addingTimeInterval(1)
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: .completed,
+      at: start.addingTimeInterval(2)
+    )
+
+    var estimate = TokenUsageInfo()
+    estimate.totalTokens = 42_000
+    estimate.contextWindow = 128_000
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: nil,
+      tokenUsageLast: estimate,
+      observedAt: start.addingTimeInterval(3)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].recentRuns[0].tokenUsage, roundUsage)
+    XCTAssertEqual(rows[0].recentRuns[0].tokenUsageSamples.map(\.usage), [roundUsage])
+  }
+
   func testApplyItemMetadataExtractsPromptPreviewFromStringAndArrayContent() {
     let store = TurnStore()
     let now = Date(timeIntervalSince1970: 1_700_000_000)

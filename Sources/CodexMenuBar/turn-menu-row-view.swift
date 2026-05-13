@@ -485,24 +485,17 @@ struct TurnMenuRowView: View {
   }
 
   private func EffectiveLastTurnTokenUsage() -> TokenUsageInfo? {
-    if endpointRow.activeTurn != nil {
-      if let usage = endpointRow.tokenUsageLast, usage.totalTokens > 0 {
-        return usage
-      }
-      return TokenUsageInfo()
-    }
-
-    guard let usage = endpointRow.tokenUsageLast, usage.totalTokens > 0 else { return nil }
+    guard let usage = endpointRow.tokenUsageLast, usage.isTurnRoundUsage else { return nil }
     return usage
   }
 
   private func EffectiveTokenUsageSamples() -> [TokenUsageSample] {
-    let samples = endpointRow.tokenUsageSamples.filter { $0.usage.totalTokens > 0 }
+    let samples = endpointRow.tokenUsageSamples.filter { $0.usage.isTurnRoundUsage }
     if !samples.isEmpty {
       return samples
     }
 
-    guard let usage = EffectiveLastTurnTokenUsage(), usage.totalTokens > 0 else {
+    guard let usage = EffectiveLastTurnTokenUsage() else {
       return []
     }
     return [TokenUsageSample(usage: usage, observedAt: endpointRow.lastEventAt ?? now)]
@@ -614,11 +607,11 @@ struct TurnMenuRowView: View {
   }
 
   private func RunTokenUsageSamples(_ run: CompletedRun) -> [TokenUsageSample] {
-    let samples = run.tokenUsageSamples.filter { $0.usage.totalTokens > 0 }
+    let samples = run.tokenUsageSamples.filter { $0.usage.isTurnRoundUsage }
     if !samples.isEmpty {
       return samples
     }
-    guard let usage = run.tokenUsage, usage.totalTokens > 0 else {
+    guard let usage = run.tokenUsage, usage.isTurnRoundUsage else {
       return []
     }
     return [TokenUsageSample(usage: usage, observedAt: run.endedAt)]

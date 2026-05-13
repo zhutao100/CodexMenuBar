@@ -619,6 +619,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       ),
       observedAt: startedAt.addingTimeInterval(92)
     )
+
+    // Codex can stream total-only context estimates between model-response token rounds.
+    // The round history should not expose those estimates as browseable ghost entries.
+    for index in 0..<60 {
+      turnStore.UpdateTokenUsage(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        tokenUsageTotal: nil,
+        tokenUsageLast: TokenUsageInfo(
+          totalTokens: 54_000 + (index * 37),
+          contextWindow: 128_000
+        ),
+        observedAt: startedAt.addingTimeInterval(93 + Double(index))
+      )
+    }
     model.SyncSectionDisclosureState()
     model.InvalidateView()
   }

@@ -115,7 +115,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     AttachScreenshot(named: "status-center-sidebar-expanded", app: app)
   }
 
-  func testStatusCenterTokenUsageHistoryBrowsesEarlierTurns() throws {
+  func testStatusCenterTokenUsageHistoryBrowsesEarlierTurnsWithoutContextEstimateGhosts() throws {
     let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
     let statusItem = try StatusItem(in: app)
 

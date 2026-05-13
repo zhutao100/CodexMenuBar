@@ -90,6 +90,14 @@ struct TokenUsageInfo: Equatable {
     guard let contextWindow, contextWindow > 0 else { return nil }
     return min(1.0, Double(totalTokens) / Double(contextWindow))
   }
+
+  var hasBreakdown: Bool {
+    inputTokens > 0 || cachedInputTokens > 0 || outputTokens > 0 || reasoningTokens > 0
+  }
+
+  var isTurnRoundUsage: Bool {
+    totalTokens > 0 && hasBreakdown
+  }
 }
 
 struct TokenUsageSample: Equatable {
@@ -436,7 +444,7 @@ final class ActiveTurn {
   }
 
   func RecordTokenUsage(_ usage: TokenUsageInfo, at now: Date) {
-    AppendTokenUsageSample(usage, at: now, to: &tokenUsageSamples)
+    AppendTokenUsageRoundSample(usage, at: now, to: &tokenUsageSamples)
   }
 
   func ActiveCategories() -> [ProgressCategory] {
@@ -527,13 +535,13 @@ func FormatTokenCount(_ count: Int) -> String {
   return "\(count)"
 }
 
-func AppendTokenUsageSample(
+func AppendTokenUsageRoundSample(
   _ usage: TokenUsageInfo,
   at now: Date,
   to samples: inout [TokenUsageSample],
   maxSamples: Int = 50
 ) {
-  guard usage.totalTokens > 0 else {
+  guard usage.isTurnRoundUsage else {
     return
   }
 
