@@ -185,8 +185,9 @@ else
   (
     cd "${CODEX_REPO_ROOT}/codex-rs"
     CODEX_HOME="${CODEX_HOME}" \
+      CODEX_SANDBOX_NETWORK_DISABLED="${CODEX_SANDBOX_NETWORK_DISABLED:-1}" \
       RUST_LOG="${RUST_LOG:-info}" \
-      cargo run -q -p codex-cli -- app-server codexd run --socket-path "${SOCKET_PATH}"
+      scripts/cargo-local run -q -p codex-cli -- app-server codexd run --socket-path "${SOCKET_PATH}"
   ) >"${CODEXD_LOG}" 2>&1 &
 fi
 CODEXD_PID="$!"
@@ -335,6 +336,73 @@ send_line(prod, {
   "params": {
     "runtimeId": runtime_id,
     "notification": {
+      "method": "turn/plan/updated",
+      "params": {
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "explanation": "e2e plan",
+        "plan": [
+          {"step": "Inspect bridge", "status": "completed"},
+          {"step": "Verify menu bar", "status": "inProgress"},
+        ],
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 5,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "item/started",
+      "params": {
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "item": {
+          "type": "fileChange",
+          "id": "patch-e2e",
+          "changes": [{
+            "path": "Sources/App.swift",
+            "kind": {"type": "update"},
+            "diff": "@@ -1 +1 @@",
+          }],
+          "status": "inProgress",
+        },
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 6,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "item/completed",
+      "params": {
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "item": {
+          "type": "fileChange",
+          "id": "patch-e2e",
+          "changes": [{
+            "path": "Sources/App.swift",
+            "kind": {"type": "update"},
+            "diff": "@@ -1 +1 @@",
+          }],
+          "status": "completed",
+        },
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 7,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
       "method": "turn/completed",
       "params": {
         "threadId": thread_id,
@@ -352,7 +420,7 @@ deadline = time.time() + 5.0
 acked = False
 while time.time() < deadline:
   obj = json.loads(recv_line(prod, timeout_s=1.0))
-  if obj.get("id") == 4:
+  if obj.get("id") == 7:
     if "result" not in obj:
       fail(f"missing producer result: {obj!r}")
     acked = True
@@ -364,7 +432,7 @@ prod.close()
 send_line(sub, {"id": 3, "method": "codexd/subscribe", "params": {"afterSeq": after_seq}})
 
 deadline = time.time() + 5.0
-while time.time() < deadline and (subscribe_response is None or len(events) < 3):
+while time.time() < deadline and (subscribe_response is None or len(events) < 7):
   handle_line(recv_line(sub, timeout_s=1.0))
 
 sub.close()
@@ -376,8 +444,8 @@ codexd_events = [e for e in events if e.get("method") == "codexd/event"]
 if not codexd_events:
   fail(f"expected codexd/event notifications, got: {events!r}")
 
-if len(codexd_events) < 3:
-  fail(f"expected >= 3 codexd/event notifications, got {len(codexd_events)}: {codexd_events!r}")
+if len(codexd_events) < 7:
+  fail(f"expected >= 7 codexd/event notifications, got {len(codexd_events)}: {codexd_events!r}")
 
 def event_seq(e):
   try:
@@ -429,6 +497,12 @@ if not notifs:
   fail(f"expected runtimeNotification in {len(codexd_events)} events")
 if "turn/started" not in notif_methods:
   fail(f"expected turn/started notification in runtimeNotification events, got: {notif_methods!r}")
+if "turn/plan/updated" not in notif_methods:
+  fail(f"expected turn/plan/updated notification in runtimeNotification events, got: {notif_methods!r}")
+if "item/started" not in notif_methods:
+  fail(f"expected item/started notification in runtimeNotification events, got: {notif_methods!r}")
+if "item/completed" not in notif_methods:
+  fail(f"expected item/completed notification in runtimeNotification events, got: {notif_methods!r}")
 if "turn/completed" not in notif_methods:
   fail(f"expected turn/completed notification in runtimeNotification events, got: {notif_methods!r}")
 

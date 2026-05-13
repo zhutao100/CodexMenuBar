@@ -1133,17 +1133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     let explanation = StringValue(params["explanation"])
-    var steps: [PlanStepInfo] = []
-
-    if let planArray = params["plan"] as? [[String: Any]] {
-      for step in planArray {
-        let desc =
-          StringValue(step["description"]) ?? StringValue(step["title"]) ?? "Unknown step"
-        let statusStr = (step["status"] as? String) ?? "pending"
-        steps.append(
-          PlanStepInfo(description: desc, status: PlanStepStatus(serverValue: statusStr)))
-      }
-    }
+    let steps = ParsePlanSteps(params["plan"])
 
     turnStore.UpdatePlan(
       endpointId: endpointId, turnId: turnId, steps: steps, explanation: explanation)
@@ -1228,4 +1218,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
   }
+}
+
+func ParsePlanSteps(_ value: Any?) -> [PlanStepInfo] {
+  guard let planArray = value as? [[String: Any]] else {
+    return []
+  }
+
+  return planArray.map { step in
+    let description =
+      NonEmptyPlanString(step["step"])
+      ?? NonEmptyPlanString(step["description"])
+      ?? NonEmptyPlanString(step["title"])
+      ?? "Unknown step"
+    let status = NonEmptyPlanString(step["status"]) ?? "pending"
+    return PlanStepInfo(description: description, status: PlanStepStatus(serverValue: status))
+  }
+}
+
+private func NonEmptyPlanString(_ value: Any?) -> String? {
+  guard let value = value as? String else {
+    return nil
+  }
+  let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+  return trimmed.isEmpty ? nil : trimmed
 }
