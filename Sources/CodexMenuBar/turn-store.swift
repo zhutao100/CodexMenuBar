@@ -19,6 +19,12 @@ final class TurnStore {
     endpointId: String,
     turnId: String
   ) {
+    // codexd snapshots replay already-active turns. Only seed a newly-created
+    // local turn; existing turns receive token updates through UpdateTokenUsage.
+    guard turn.tokenUsageSamples.isEmpty else {
+      return
+    }
+
     guard let metadata = metadataByEndpoint[endpointId],
       metadata.turnId == turnId
     else {

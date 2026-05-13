@@ -884,6 +884,16 @@ private struct TokenUsageHistoryCard: View {
               .accessibilityLabel("\(ClampedSelectedIndex + 1) of \(entries.count)")
               .accessibilityIdentifier("turn.tokenUsageHistory.position.\(endpointId)")
 
+            Button(action: ShowLatestEntry) {
+              Text("Latest")
+                .font(.system(size: 9, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .disabled(ClampedSelectedIndex == 0)
+            .help("Back to latest turn token usage")
+            .accessibilityLabel("Back to latest turn token usage")
+            .accessibilityIdentifier("turn.tokenUsageHistory.latest.\(endpointId)")
+
             Button(action: ShowNewerEntry) {
               Image(systemName: "chevron.left")
                 .font(.system(size: 9, weight: .semibold))
@@ -939,6 +949,10 @@ private struct TokenUsageHistoryCard: View {
             .accessibilityIdentifier("turn.tokenUsageHistory.detail.\(endpointId)")
         }
       }
+      .onAppear(perform: ClampSelection)
+      .onChange(of: entries.count) { _, _ in
+        ClampSelection()
+      }
     }
   }
 
@@ -954,6 +968,14 @@ private struct TokenUsageHistoryCard: View {
       return 0
     }
     return min(max(0, selectedIndex), entries.count - 1)
+  }
+
+  private func ClampSelection() {
+    selectedIndex = ClampedSelectedIndex
+  }
+
+  private func ShowLatestEntry() {
+    selectedIndex = 0
   }
 
   private func ShowNewerEntry() {

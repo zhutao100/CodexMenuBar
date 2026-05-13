@@ -635,6 +635,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observedAt: startedAt.addingTimeInterval(93 + Double(index))
       )
     }
+
+    // codexd emits runtimeUpsert snapshots before forwarded runtime notifications.
+    // Replaying an active turn must not replay its round history into itself.
+    for index in 0..<4 {
+      turnStore.UpsertTurnStarted(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        at: startedAt.addingTimeInterval(160 + Double(index))
+      )
+    }
     model.SyncSectionDisclosureState()
     model.InvalidateView()
   }

@@ -38,8 +38,8 @@ Expand CodexMenuBar from a compact active-turn popover into a richer native macO
   - `codexd/runtime/unregister`.
 - Runtime snapshot fields:
   - `runtimeId`, `pid`, `sessionSource`, `cwd`, `displayName`, `activeTurns`;
-  - each active turn has only `threadId` and `turnId`.
-- `codexd` itself only interprets `turn/started` and `turn/completed` to maintain `activeTurns`; every other runtime notification is forwarded as opaque payload.
+  - each active turn has `turnKey`, `threadId`, `turnId`, and optional summary/context fields including status, model, cwd, context remaining percent, token usage, and thread name.
+- `codexd` interprets `turn/started`, `turn/completed`, `turn/contextUpdated`, `turn/stateUpdated`, and `thread/tokenUsage/updated` to maintain `activeTurns`; every runtime notification is still forwarded after any corresponding `runtimeUpsert` snapshot.
 - Producer behavior:
   - reconnects to the daemon socket;
   - registers metadata on connect;

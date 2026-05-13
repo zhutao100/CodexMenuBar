@@ -174,6 +174,14 @@ final class MenuBarUISmokeTests: XCTestCase {
     newerButton.click()
     XCTAssertTrue(WaitForStringValue(of: position, equals: "4 of 5"))
 
+    let latestButton = app.buttons["turn.tokenUsageHistory.latest.fixture-endpoint"]
+    XCTAssertTrue(latestButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(latestButton.isEnabled)
+    latestButton.click()
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "1 of 5"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+    XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 12.8k"))
+
     AttachScreenshot(named: "status-center-token-history", app: app)
   }
 
