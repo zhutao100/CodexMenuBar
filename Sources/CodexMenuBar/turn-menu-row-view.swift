@@ -121,8 +121,11 @@ private func RuntimeTurnKindNoun(
   }
 }
 
-private func ParentTurnDetailLabel(taskKind: String?) -> String {
-  NormalizeIdentifier(taskKind) == "post_turn_completion_review" ? "Reviewed turn" : "Parent"
+private func ParentTurnDetailText(taskKind: String?) -> String {
+  if NormalizeIdentifier(taskKind) == "post_turn_completion_review" {
+    return "Review target: previous completed turn"
+  }
+  return "Parent turn: same-session parent"
 }
 
 private func NormalizeIdentifier(_ value: String?) -> String {
@@ -163,6 +166,12 @@ struct TurnMenuRowView: View {
   @State private var fileHistoryPage = 0
   @State private var commandHistoryPage = 0
   @State private var runHistoryPage = 0
+  @State private var isPromptSectionExpanded = true
+  @State private var isDetailsSectionExpanded = true
+  @State private var isTokenUsageSectionExpanded = true
+  @State private var isSessionTokenSectionExpanded = true
+  @State private var isErrorSectionExpanded = true
+  @State private var isPlanSectionExpanded = true
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -277,27 +286,27 @@ struct TurnMenuRowView: View {
   private var ExpandedBody: some View {
     VStack(alignment: .leading, spacing: 10) {
       if let prompt = PromptDisplayText() {
-        SectionCard {
-          HStack(spacing: 6) {
-            Label("Prompt", systemImage: "text.bubble.fill")
-              .font(.system(size: 10, weight: .semibold))
+        AccordionSectionCard(
+          title: "Prompt",
+          systemImage: "text.bubble.fill",
+          accessibilityIdentifier: "turn.promptSection.\(endpointRow.endpointId)",
+          isExpanded: isPromptSectionExpanded,
+          onToggle: { isPromptSectionExpanded.toggle() }
+        ) {
+          VStack(alignment: .leading, spacing: 5) {
+            Text(prompt)
+              .font(.system(size: 10))
               .foregroundStyle(.secondary)
-
-            Spacer(minLength: 4)
+              .lineLimit(2)
 
             Button(action: { CopyToClipboard(prompt) }) {
-              Image(systemName: "doc.on.doc")
-                .font(.system(size: 10, weight: .semibold))
+              Label("Copy prompt", systemImage: "doc.on.doc")
+                .font(.system(size: 9, weight: .semibold))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Copy prompt")
             .help("Copy prompt")
           }
-        } content: {
-          Text(prompt)
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
         }
       }
 
@@ -309,11 +318,13 @@ struct TurnMenuRowView: View {
       }
 
       if let turnDetails = TurnDetailsLine() {
-        SectionCard {
-          Label("Turn Details", systemImage: "info.circle.fill")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-        } content: {
+        AccordionSectionCard(
+          title: "Turn Details",
+          systemImage: "info.circle.fill",
+          accessibilityIdentifier: "turn.detailsSection.\(endpointRow.endpointId)",
+          isExpanded: isDetailsSectionExpanded,
+          onToggle: { isDetailsSectionExpanded.toggle() }
+        ) {
           Text(turnDetails)
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(.tertiary)
@@ -328,16 +339,20 @@ struct TurnMenuRowView: View {
         TokenUsageHistoryCard(
           endpointId: endpointRow.endpointId,
           entries: tokenHistoryEntries,
-          selectedIndex: $selectedTokenHistoryIndex
+          selectedIndex: $selectedTokenHistoryIndex,
+          isExpanded: isTokenUsageSectionExpanded,
+          onToggle: { isTokenUsageSectionExpanded.toggle() }
         )
       }
 
       if let usage = SessionTokenUsage() {
-        SectionCard {
-          Label(SessionTokenTitle(usage: usage), systemImage: "chart.pie.fill")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-        } content: {
+        AccordionSectionCard(
+          title: SessionTokenTitle(usage: usage),
+          systemImage: "chart.pie.fill",
+          accessibilityIdentifier: "turn.sessionTokenSection.\(endpointRow.endpointId)",
+          isExpanded: isSessionTokenSectionExpanded,
+          onToggle: { isSessionTokenSectionExpanded.toggle() }
+        ) {
           VStack(alignment: .leading, spacing: 4) {
             TokenUsageBarView(usage: usage)
               .frame(maxWidth: .infinity)
@@ -352,23 +367,13 @@ struct TurnMenuRowView: View {
       }
 
       if let latestError = endpointRow.latestError {
-        SectionCard {
-          HStack(spacing: 6) {
-            Label("Error", systemImage: "exclamationmark.circle.fill")
-              .font(.system(size: 10, weight: .semibold))
-              .foregroundStyle(.red)
-
-            Spacer(minLength: 4)
-
-            Button(action: { CopyToClipboard(ErrorCopyText(latestError)) }) {
-              Image(systemName: "doc.on.doc")
-                .font(.system(size: 10, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Copy error")
-            .help("Copy error")
-          }
-        } content: {
+        AccordionSectionCard(
+          title: "Error",
+          systemImage: "exclamationmark.circle.fill",
+          accessibilityIdentifier: "turn.errorSection.\(endpointRow.endpointId)",
+          isExpanded: isErrorSectionExpanded,
+          onToggle: { isErrorSectionExpanded.toggle() }
+        ) {
           VStack(alignment: .leading, spacing: 2) {
             Text(
               latestError.willRetry ? "\(latestError.message) (retrying...)" : latestError.message
@@ -383,17 +388,27 @@ struct TurnMenuRowView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
             }
+
+            Button(action: { CopyToClipboard(ErrorCopyText(latestError)) }) {
+              Label("Copy error", systemImage: "doc.on.doc")
+                .font(.system(size: 9, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Copy error")
+            .help("Copy error")
           }
         }
       }
 
       if !endpointRow.planSteps.isEmpty {
         let planPage = PlanHistoryPage()
-        SectionCard {
-          Label(PlanTitle(), systemImage: "checklist")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-        } content: {
+        AccordionSectionCard(
+          title: PlanTitle(),
+          systemImage: "checklist",
+          accessibilityIdentifier: "turn.planSection.\(endpointRow.endpointId)",
+          isExpanded: isPlanSectionExpanded,
+          onToggle: { isPlanSectionExpanded.toggle() }
+        ) {
           VStack(alignment: .leading, spacing: 4) {
             if endpointRow.planSteps.count > RuntimeHistoryPageSize.planSteps {
               HistoryPagerControls(
@@ -424,6 +439,7 @@ struct TurnMenuRowView: View {
         AccordionSectionCard(
           title: "Files (\(VisibleFileChanges().count))",
           systemImage: "doc.text.fill",
+          accessibilityIdentifier: "turn.filesSection.\(endpointRow.endpointId)",
           isExpanded: isFilesExpanded,
           onToggle: onToggleFiles
         ) {
@@ -459,6 +475,7 @@ struct TurnMenuRowView: View {
         AccordionSectionCard(
           title: "Commands / Tools Run (\(VisibleCommands().count))",
           systemImage: "terminal.fill",
+          accessibilityIdentifier: "turn.commandsSection.\(endpointRow.endpointId)",
           isExpanded: isCommandsExpanded,
           onToggle: onToggleCommands
         ) {
@@ -491,6 +508,7 @@ struct TurnMenuRowView: View {
         AccordionSectionCard(
           title: "Completed Turns (\(endpointRow.recentRuns.count))",
           systemImage: "clock.arrow.circlepath",
+          accessibilityIdentifier: "turn.completedTurnsSection.\(endpointRow.endpointId)",
           isExpanded: isPastRunsExpanded,
           onToggle: onTogglePastRuns
         ) {
@@ -618,7 +636,8 @@ struct TurnMenuRowView: View {
     let effectiveSamples = EffectiveTokenUsageSamples()
     if !effectiveSamples.isEmpty {
       let turnId = activeTurn?.turnId ?? endpointRow.turnId ?? "latest"
-      seenTurnIds.insert(TurnIdentity(threadId: endpointRow.threadId, turnId: turnId))
+      seenTurnIds.insert(
+        TurnIdentity(turnKey: endpointRow.turnKey, threadId: endpointRow.threadId, turnId: turnId))
       let titlePrefix = activeTurn == nil ? "Latest" : "Current"
 
       let newestFirstSamples = Array(effectiveSamples.enumerated().reversed())
@@ -638,7 +657,8 @@ struct TurnMenuRowView: View {
       }
     } else if let usage = EffectiveLastTurnTokenUsage() {
       let turnId = activeTurn?.turnId ?? endpointRow.turnId ?? "latest"
-      seenTurnIds.insert(TurnIdentity(threadId: endpointRow.threadId, turnId: turnId))
+      seenTurnIds.insert(
+        TurnIdentity(turnKey: endpointRow.turnKey, threadId: endpointRow.threadId, turnId: turnId))
       let titlePrefix = activeTurn == nil ? "Latest" : "Current"
       entries.append(
         TokenUsageHistoryEntry(
@@ -662,7 +682,8 @@ struct TurnMenuRowView: View {
         continue
       }
 
-      let turnIdentity = TurnIdentity(threadId: run.threadId, turnId: run.turnId)
+      let turnIdentity = TurnIdentity(
+        turnKey: run.turnKey, threadId: run.threadId, turnId: run.turnId)
       guard !seenTurnIds.contains(turnIdentity) else {
         continue
       }
@@ -742,8 +763,14 @@ struct TurnMenuRowView: View {
     return values.joined(separator: " · ")
   }
 
-  private func TurnIdentity(threadId: String?, turnId: String) -> String {
-    "\(threadId ?? "no-thread"):\(turnId)"
+  private func TurnIdentity(turnKey: String?, threadId: String?, turnId: String) -> String {
+    if let turnKey = NonEmpty(turnKey) {
+      return "key:\(turnKey)"
+    }
+    if let threadId = NonEmpty(threadId) {
+      return "thread:\(threadId):\(turnId)"
+    }
+    return "legacy:\(turnId)"
   }
 
   private func RunStatusText(_ status: TurnExecutionStatus) -> String {
@@ -833,14 +860,11 @@ struct TurnMenuRowView: View {
     if let threadName = NonEmpty(endpointRow.threadName) {
       values.append("Name: \(threadName)")
     }
-    if let turnId = NonEmpty(endpointRow.turnId) {
-      values.append("Turn: \(turnId)")
-    }
     if let threadId = NonEmpty(endpointRow.threadId) {
       values.append("Thread: \(threadId)")
     }
-    if let parentTurnId = NonEmpty(endpointRow.parentTurnId) {
-      values.append("\(ParentTurnDetailLabel(taskKind: endpointRow.taskKind)): \(parentTurnId)")
+    if NonEmpty(endpointRow.parentTurnId) != nil {
+      values.append(ParentTurnDetailText(taskKind: endpointRow.taskKind))
     }
     guard values.count > 1 || endpointRow.activeTurn != nil else {
       return nil
@@ -967,6 +991,12 @@ struct TurnMenuRowView: View {
     fileHistoryPage = 0
     commandHistoryPage = 0
     runHistoryPage = 0
+    isPromptSectionExpanded = true
+    isDetailsSectionExpanded = true
+    isTokenUsageSectionExpanded = true
+    isSessionTokenSectionExpanded = true
+    isErrorSectionExpanded = true
+    isPlanSectionExpanded = true
   }
 
   private func ErrorCopyText(_ error: ErrorInfo) -> String {
@@ -1040,57 +1070,61 @@ private struct TokenUsageHistoryCard: View {
   let endpointId: String
   let entries: [TokenUsageHistoryEntry]
   @Binding var selectedIndex: Int
+  let isExpanded: Bool
+  let onToggle: () -> Void
 
   var body: some View {
     if let entry = SelectedEntry {
-      SectionCard {
-        HStack(spacing: 6) {
-          Label("Turn Token Usage", systemImage: "chart.bar.fill")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-
-          Spacer(minLength: 4)
-
-          if entries.count > 1 {
-            Text("\(ClampedSelectedIndex + 1) of \(entries.count)")
-              .font(.system(size: 9, weight: .medium, design: .monospaced))
-              .foregroundStyle(.tertiary)
-              .accessibilityLabel("\(ClampedSelectedIndex + 1) of \(entries.count)")
-              .accessibilityIdentifier("turn.tokenUsageHistory.position.\(endpointId)")
-
-            Button(action: ShowLatestEntry) {
-              Text("Latest")
-                .font(.system(size: 9, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .disabled(ClampedSelectedIndex == 0)
-            .help("Back to latest turn token usage")
-            .accessibilityLabel("Back to latest turn token usage")
-            .accessibilityIdentifier("turn.tokenUsageHistory.latest.\(endpointId)")
-
-            Button(action: ShowNewerEntry) {
-              Image(systemName: "chevron.left")
-                .font(.system(size: 9, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .disabled(ClampedSelectedIndex == 0)
-            .help("Show newer turn token usage")
-            .accessibilityLabel("Show newer turn token usage")
-            .accessibilityIdentifier("turn.tokenUsageHistory.newer.\(endpointId)")
-
-            Button(action: ShowEarlierEntry) {
-              Image(systemName: "chevron.right")
-                .font(.system(size: 9, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .disabled(ClampedSelectedIndex >= entries.count - 1)
-            .help("Show earlier turn token usage")
-            .accessibilityLabel("Show earlier turn token usage")
-            .accessibilityIdentifier("turn.tokenUsageHistory.earlier.\(endpointId)")
-          }
-        }
-      } content: {
+      AccordionSectionCard(
+        title: "Turn Token Usage",
+        systemImage: "chart.bar.fill",
+        accessibilityIdentifier: "turn.tokenUsageSection.\(endpointId)",
+        isExpanded: isExpanded,
+        onToggle: onToggle
+      ) {
         VStack(alignment: .leading, spacing: 4) {
+          if entries.count > 1 {
+            HStack(spacing: 6) {
+              Text("\(ClampedSelectedIndex + 1) of \(entries.count)")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .accessibilityLabel("\(ClampedSelectedIndex + 1) of \(entries.count)")
+                .accessibilityIdentifier("turn.tokenUsageHistory.position.\(endpointId)")
+
+              Spacer(minLength: 4)
+
+              Button(action: ShowLatestEntry) {
+                Text("Latest")
+                  .font(.system(size: 9, weight: .semibold))
+              }
+              .buttonStyle(.plain)
+              .disabled(ClampedSelectedIndex == 0)
+              .help("Back to latest turn token usage")
+              .accessibilityLabel("Back to latest turn token usage")
+              .accessibilityIdentifier("turn.tokenUsageHistory.latest.\(endpointId)")
+
+              Button(action: ShowNewerEntry) {
+                Image(systemName: "chevron.left")
+                  .font(.system(size: 9, weight: .semibold))
+              }
+              .buttonStyle(.plain)
+              .disabled(ClampedSelectedIndex == 0)
+              .help("Show newer turn token usage")
+              .accessibilityLabel("Show newer turn token usage")
+              .accessibilityIdentifier("turn.tokenUsageHistory.newer.\(endpointId)")
+
+              Button(action: ShowEarlierEntry) {
+                Image(systemName: "chevron.right")
+                  .font(.system(size: 9, weight: .semibold))
+              }
+              .buttonStyle(.plain)
+              .disabled(ClampedSelectedIndex >= entries.count - 1)
+              .help("Show earlier turn token usage")
+              .accessibilityLabel("Show earlier turn token usage")
+              .accessibilityIdentifier("turn.tokenUsageHistory.earlier.\(endpointId)")
+            }
+          }
+
           HStack(spacing: 6) {
             Text(entry.title)
               .font(.system(size: 10, weight: .medium))
@@ -1344,12 +1378,11 @@ private struct RunHistoryRowView: View {
     if let threadName = NonEmpty(run.threadName) {
       values.append("Name: \(threadName)")
     }
-    values.append("Turn: \(run.turnId)")
     if let threadId = NonEmpty(run.threadId) {
       values.append("Thread: \(threadId)")
     }
-    if let parentTurnId = NonEmpty(run.parentTurnId) {
-      values.append("\(ParentTurnDetailLabel(taskKind: run.taskKind)): \(parentTurnId)")
+    if NonEmpty(run.parentTurnId) != nil {
+      values.append(ParentTurnDetailText(taskKind: run.taskKind))
     }
     return values.joined(separator: " · ")
   }
@@ -1482,6 +1515,7 @@ private struct SectionCard<Header: View, Content: View>: View {
 private struct AccordionSectionCard<Content: View>: View {
   let title: String
   let systemImage: String
+  let accessibilityIdentifier: String
   let isExpanded: Bool
   let onToggle: () -> Void
   @ViewBuilder let content: Content
@@ -1500,8 +1534,10 @@ private struct AccordionSectionCard<Content: View>: View {
             .font(.system(size: 10, weight: .medium))
             .foregroundStyle(.tertiary)
         }
+        .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .accessibilityIdentifier(accessibilityIdentifier)
     } content: {
       if isExpanded {
         content

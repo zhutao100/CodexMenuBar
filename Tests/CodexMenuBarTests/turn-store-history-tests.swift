@@ -624,6 +624,56 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].recentRuns.first?.taskKind, "post_turn_completion_review")
   }
 
+  func testDelegateCompletionIsDedupedWhenCompletionSourcesUseDifferentTurnKeys() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: "delegate-thread:post-turn-review-0",
+      at: start
+    )
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: "delegate-thread:post-turn-review-0",
+      turn: [
+        "scope": "delegate",
+        "taskKind": "post_turn_completion_review",
+        "sessionSource": "subagent_review",
+        "subAgentSource": "review",
+        "parentTurnId": "turn-1",
+      ],
+      at: start
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: "delegate-thread:post-turn-review-0",
+      status: .completed,
+      at: start.addingTimeInterval(1)
+    )
+    store.Tick(now: start.addingTimeInterval(12))
+
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: "updated-delegate-thread:post-turn-review-0",
+      status: .completed,
+      at: start.addingTimeInterval(13)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].recentRuns.map(\.turnId), ["post-turn-review-0"])
+    XCTAssertEqual(rows[0].recentRuns.first?.threadId, "delegate-thread")
+    XCTAssertEqual(rows[0].recentRuns.first?.turnKey, "delegate-thread:post-turn-review-0")
+  }
+
   func testApplyItemMetadataExtractsPromptPreviewFromStringAndArrayContent() {
     let store = TurnStore()
     let now = Date(timeIntervalSince1970: 1_700_000_000)

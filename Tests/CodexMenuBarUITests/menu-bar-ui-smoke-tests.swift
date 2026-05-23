@@ -204,7 +204,9 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     let details = app.descendants(matching: .any)["turn.details.fixture-endpoint"]
     XCTAssertTrue(details.waitForExistence(timeout: 5))
-    XCTAssertTrue(WaitForStringValueContaining(of: details, text: "Reviewed turn: regular-turn"))
+    XCTAssertTrue(
+      WaitForStringValueContaining(of: details, text: "Review target: previous completed turn"))
+    XCTAssertFalse(String(describing: details.value ?? "").contains("Turn:"))
 
     let position = app.descendants(matching: .any)[
       "turn.tokenUsageHistory.position.fixture-endpoint"]
@@ -219,6 +221,13 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(WaitForStringValue(of: title, equals: "Current post-turn review"))
     XCTAssertTrue(String(describing: usageDetail.value ?? "").contains("In: 3.4k"))
 
+    let tokenUsageSection = app.buttons["turn.tokenUsageSection.fixture-endpoint"]
+    XCTAssertTrue(tokenUsageSection.waitForExistence(timeout: 5))
+    tokenUsageSection.click()
+    XCTAssertTrue(WaitForNonExistence(of: position))
+    tokenUsageSection.click()
+    XCTAssertTrue(position.waitForExistence(timeout: 5))
+
     let earlierButton = app.buttons["turn.tokenUsageHistory.earlier.fixture-endpoint"]
     XCTAssertTrue(earlierButton.waitForExistence(timeout: 5))
     XCTAssertTrue(earlierButton.isEnabled)
@@ -232,6 +241,24 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(WaitForStringValue(of: title, equals: "Latest completed regular turn"))
     XCTAssertTrue(String(describing: usageDetail.value ?? "").contains("In: 18.2k"))
     AttachScreenshot(named: "status-center-delegate-token-history", app: app)
+  }
+
+  func testStatusCenterShowsDockIcon() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let dock = XCUIApplication(bundleIdentifier: "com.apple.dock")
+    let dockItem = dock.dockItems["CodexMenuBar"]
+    XCTAssertTrue(dockItem.waitForExistence(timeout: 5))
   }
 
   func testStatusCenterRuntimeHistorySectionsBrowseOlderEntries() throws {

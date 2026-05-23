@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    NSApplication.shared.setActivationPolicy(.accessory)
+    ApplyActivationPolicy()
     ConfigureMainMenu()
     ConfigureStatusMenu()
     ConfigureClient()
@@ -307,15 +307,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func ShowStatusWindow() {
+    isStatusWindowVisible = true
+    ApplyActivationPolicy()
     statusWindowController.Show()
   }
 
   private func SetStatusWindowVisibility(_ isVisible: Bool) {
     isStatusWindowVisible = isVisible
+    ApplyActivationPolicy()
     if isVisible {
       model.InvalidateView()
     }
     RefreshLiveSurfaceTimer(tickImmediately: isVisible)
+  }
+
+  private func ApplyActivationPolicy() {
+    let targetPolicy: NSApplication.ActivationPolicy = isStatusWindowVisible ? .regular : .accessory
+    if NSApplication.shared.activationPolicy() != targetPolicy {
+      NSApplication.shared.setActivationPolicy(targetPolicy)
+    }
   }
 
   @objc

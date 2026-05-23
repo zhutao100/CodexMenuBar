@@ -492,13 +492,31 @@ send_line(prod, {
     },
   },
 })
+send_line(prod, {
+  "id": 11,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "turn/completed",
+      "params": {
+        "threadId": delegate_thread_id,
+        "turn": {
+          "id": delegate_turn_id,
+          "key": delegate_turn_key,
+          "status": "completed",
+        },
+      },
+    },
+  },
+})
 
 # Wait for the last producer ack to ensure events are applied before we subscribe.
 deadline = time.time() + 5.0
 acked = False
 while time.time() < deadline:
   obj = json.loads(recv_line(prod, timeout_s=1.0))
-  if obj.get("id") == 10:
+  if obj.get("id") == 11:
     if "result" not in obj:
       fail(f"missing producer result: {obj!r}")
     acked = True
@@ -599,8 +617,8 @@ if "item/started" not in notif_methods:
   fail(f"expected item/started notification in runtimeNotification events, got: {notif_methods!r}")
 if "item/completed" not in notif_methods:
   fail(f"expected item/completed notification in runtimeNotification events, got: {notif_methods!r}")
-if notif_methods.count("turn/completed") < 2:
-  fail(f"expected regular and delegate turn/completed notifications, got: {notif_methods!r}")
+if notif_methods.count("turn/completed") < 3:
+  fail(f"expected regular, delegate, and duplicate delegate turn/completed notifications, got: {notif_methods!r}")
 
 subscribe_seq = int(subscribe_response["result"]["seq"])
 if max(seqs) > subscribe_seq:

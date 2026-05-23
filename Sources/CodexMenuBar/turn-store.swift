@@ -859,8 +859,17 @@ final class TurnStore {
     threadId: String?,
     turnId: String
   ) -> Bool {
-    if let turnKey = NonEmptyString(turnKey), let runTurnKey = run.turnKey {
-      return turnKey == runTurnKey
+    if let turnKey = NonEmptyString(turnKey), let runTurnKey = NonEmptyString(run.turnKey) {
+      if turnKey == runTurnKey {
+        return true
+      }
+      guard run.turnId == turnId else {
+        return false
+      }
+      if let threadId = NonEmptyString(threadId), let runThreadId = NonEmptyString(run.threadId) {
+        return threadId == runThreadId
+      }
+      return false
     }
     guard run.turnId == turnId else {
       return false

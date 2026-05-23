@@ -30,6 +30,8 @@ The menu bar popover keeps global actions as icon buttons in the title row with 
 
 The Status Center sidebar starts compact, is resizable when expanded, restores the last expanded width after collapse/expand, and still switches runtimes through collapsed icon buttons. Preserve the centered `No Codex runtimes` detail empty state when no runtime is selected.
 
+The app normally runs with accessory activation policy, but switches to regular activation while the Status Center window is open so the window has a Dock icon. Revert to accessory only when the Status Center closes.
+
 Runtime detail panes keep interactive history controls compact: token usage browses newest/older samples across current-turn rounds and completed turns, excluding total-only context estimates; codexd `runtimeUpsert` snapshots replay active turns before forwarded notifications, so token round seeding must stay idempotent. Active turn identity is keyed by codexd `turnKey`/thread before legacy turn id so delegate turns do not inherit regular-turn token history. Long plan, file, command, completed-turn, and expanded-run histories page instead of silently truncating.
 
 Icon assets: the app bundle icon is `Sources/CodexMenuBar/Resources/Assets.xcassets/AppIcon.appiconset`, generated from `Resources/svgs/codex-app.svg`; the menu bar template icon loads from `Resources/svgs/codex.svg`. Keep the SVGs valid when replacing icons, then regenerate the Xcode project.
