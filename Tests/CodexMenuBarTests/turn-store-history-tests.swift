@@ -502,6 +502,80 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].tokenUsageSamples.map(\.usage), [delegateUsage])
   }
 
+  func testRegularTurnAfterDelegateDoesNotInheritDelegateMetadata() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let delegateTurnKey = "delegate-thread:post-turn-review-0"
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: delegateTurnKey,
+      at: start
+    )
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: delegateTurnKey,
+      turn: [
+        "scope": "delegate",
+        "taskKind": "post_turn_completion_review",
+        "sessionSource": "subagent_review",
+        "subAgentSource": "review",
+        "parentTurnId": "turn-1",
+        "threadName": "Post-turn review",
+        "model": "gpt-5-review",
+        "modelProvider": "openai",
+        "thinkingLevel": "high",
+        "cwd": "/tmp/review",
+      ],
+      at: start
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: delegateTurnKey,
+      status: .completed,
+      at: start.addingTimeInterval(1)
+    )
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "main-thread",
+      turnId: "turn-2",
+      at: start.addingTimeInterval(2)
+    )
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "main-thread",
+      turnId: "turn-2",
+      turn: [
+        "id": "turn-2"
+      ],
+      at: start.addingTimeInterval(2)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].activeTurn?.turnId, "turn-2")
+    XCTAssertEqual(rows[0].threadId, "main-thread")
+    XCTAssertNil(rows[0].turnKey)
+    XCTAssertNil(rows[0].scope)
+    XCTAssertNil(rows[0].taskKind)
+    XCTAssertNil(rows[0].sessionSource)
+    XCTAssertNil(rows[0].subAgentSource)
+    XCTAssertNil(rows[0].parentTurnId)
+    XCTAssertNil(rows[0].threadName)
+    XCTAssertNil(rows[0].model)
+    XCTAssertNil(rows[0].modelProvider)
+    XCTAssertNil(rows[0].thinkingLevel)
+    XCTAssertNil(rows[0].cwd)
+    XCTAssertEqual(rows[0].recentRuns.first?.scope, "delegate")
+    XCTAssertEqual(rows[0].recentRuns.first?.taskKind, "post_turn_completion_review")
+  }
+
   func testDelegateCompletionIsArchivedOnceAcrossCompletionSources() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)

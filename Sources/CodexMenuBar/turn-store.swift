@@ -104,6 +104,18 @@ final class TurnStore {
         || (threadId != nil && metadata.threadId != nil && metadata.threadId != threadId))
     if changedTurn {
       metadata.promptPreview = nil
+      metadata.model = nil
+      metadata.modelProvider = nil
+      metadata.thinkingLevel = nil
+      metadata.cwd = nil
+      metadata.sessionSource = nil
+      metadata.threadId = nil
+      metadata.turnKey = nil
+      metadata.scope = nil
+      metadata.taskKind = nil
+      metadata.subAgentSource = nil
+      metadata.parentTurnId = nil
+      metadata.threadName = nil
       metadata.tokenUsageTotal = nil
       metadata.tokenUsageLast = nil
       metadata.tokenUsageSamples.removeAll()
