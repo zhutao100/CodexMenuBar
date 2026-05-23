@@ -19,15 +19,20 @@ set -euo pipefail
 #   .artifacts/verify-fast/logs/build.log
 #   .artifacts/verify-fast/logs/test.log (when tests run)
 #
-# Build/test artifacts (repo root, ignored):
-#   .build/xcode/DerivedData-style build products (Xcode mode)
-#   .build/verify-fast/TestResults.xcresult (Xcode mode)
+# Build artifacts (repo root, ignored):
+#   .build/xcode/DerivedData/<configuration>/<destination> (Xcode mode)
+#
+# Test artifacts (repo root, ignored):
+#   .artifacts/verify-fast/TestResults.xcresult (Xcode mode)
 #
 # Verbosity:
 #   VERBOSE=1   stream tool output (default is low-noise)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INVOKE_DIR="$(pwd)"
+
+# shellcheck source=scripts/xcode_paths.sh
+source "${ROOT}/scripts/xcode_paths.sh"
 
 cd "${ROOT}"
 
@@ -37,17 +42,17 @@ if [[ "${INVOKE_DIR}" != "${ROOT}" && "${INVOKE_DIR}" != "${ROOT}/"* ]]; then
 fi
 
 ARTIFACTS_DIR="${VERIFY_FAST_ARTIFACTS_DIR:-$ROOT/.artifacts/verify-fast}"
-BUILD_ARTIFACTS_DIR="${VERIFY_FAST_BUILD_ARTIFACTS_DIR:-$ROOT/.build/verify-fast}"
 LOG_DIR="${ARTIFACTS_DIR}/logs"
-RESULT_BUNDLE_PATH="${BUILD_ARTIFACTS_DIR}/TestResults.xcresult"
+RESULTS_DIR="${VERIFY_FAST_RESULTS_DIR:-${VERIFY_FAST_BUILD_ARTIFACTS_DIR:-$ARTIFACTS_DIR}}"
+RESULT_BUNDLE_PATH="${RESULTS_DIR}/TestResults.xcresult"
 
-mkdir -p "${LOG_DIR}" "${BUILD_ARTIFACTS_DIR}"
+mkdir -p "${LOG_DIR}" "${RESULTS_DIR}"
 
 VERIFY_FAST_MODE="${VERIFY_FAST_MODE:-auto}"
 PROJECT_OR_WORKSPACE="${PROJECT_OR_WORKSPACE:-}"
 SCHEME="${SCHEME:-}"
-DESTINATION="${DESTINATION:-platform=macOS}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
+DESTINATION="${DESTINATION:-$(xcode_default_destination)}"
 VERBOSE="${VERBOSE:-0}"
 SWIFTPM_PACKAGE_DIR="${SWIFTPM_PACKAGE_DIR:-}"
 XCODE_CODE_SIGNING_ALLOWED="${XCODE_CODE_SIGNING_ALLOWED:-NO}"
@@ -236,7 +241,7 @@ if [[ -n "${PROJECT_OR_WORKSPACE}" && "${VERIFY_FAST_MODE}" != "swiftpm" ]]; the
     local_build_args+=( -project "${PROJECT_OR_WORKSPACE}" )
   fi
 
-  DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${ROOT}/.build/xcode}"
+  DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$(xcode_shared_derived_data_path "$ROOT" "$DESTINATION" "$CONFIGURATION")}"
 
   if [[ -z "${SEATBELT_SANDBOX_WORKSPACE_ROOT:-}" ]]; then
     export SEATBELT_SANDBOX_WORKSPACE_ROOT="${ROOT}"

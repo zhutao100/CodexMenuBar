@@ -11,7 +11,7 @@ Usage:
 
 Defaults:
   CONFIGURATION=Release
-  DERIVED_DATA_PATH=.build/xcode
+  DERIVED_DATA_PATH=.build/xcode/DerivedData/<configuration>/<destination>
   DESTINATION='platform=macOS,arch=<host>'
   SCHEMES=(auto-detected)
 
@@ -306,10 +306,12 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# shellcheck source=scripts/xcode_paths.sh
+source "$root_dir/scripts/xcode_paths.sh"
+
 configuration="${CONFIGURATION:-Release}"
-derived_data_path="${DERIVED_DATA_PATH:-.build/xcode}"
-host_arch="$(uname -m)"
-destination="${DESTINATION:-platform=macOS,arch=$host_arch}"
+destination="${DESTINATION:-$(xcode_default_destination 1)}"
+derived_data_path="${DERIVED_DATA_PATH:-$(xcode_shared_derived_data_path "$root_dir" "$destination" "$configuration")}"
 log_dir="${LOG_DIR:-.artifacts/logs}"
 
 cd "$root_dir"

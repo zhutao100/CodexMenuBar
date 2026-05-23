@@ -5,6 +5,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# shellcheck source=scripts/xcode_paths.sh
+source "$REPO_ROOT/scripts/xcode_paths.sh"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -27,8 +30,8 @@ Recommended:
 
 Optional:
   --package-root <dir>            SwiftPM package root (default: repo root)
-  --derived-data <dir>            DerivedData path (default: <run-dir>/DerivedData when --reuse-build)
-  --configuration <name>          e.g. Debug / Release
+  --derived-data <dir>            DerivedData path (default: .build/xcode/DerivedData/<configuration>/<destination>)
+  --configuration <name>          e.g. Debug / Release (default: Debug)
   --only-testing <id>             Repeatable. TestTarget[/TestClass[/TestMethod]]
   --skip-testing <id>             Repeatable.
   --only-test-configuration <name> Repeatable. Test plan configuration name
@@ -62,6 +65,7 @@ Examples:
   scripts/ui/ui_loop.sh --workspace App.xcworkspace --scheme App --test-plan Smoke \
     --destination 'platform=macOS' --reuse-build \
     --system-attachment-lifetime keepNever \
+    --user-attachment-lifetime keepAlways \
     --sanitize-screenshots keep --delete-raw-attachments
 EOF
 }
@@ -70,11 +74,11 @@ WORKSPACE=""
 PROJECT=""
 SCHEME=""
 TEST_PLAN=""
-DESTINATION="platform=macOS"
+DESTINATION="$(xcode_default_destination)"
 ARTIFACTS_DIR="$REPO_ROOT/.artifacts/ui"
 PACKAGE_ROOT="$REPO_ROOT"
 DERIVED_DATA=""
-CONFIGURATION=""
+CONFIGURATION="Debug"
 REUSE_BUILD=0
 XCTESTRUN=""
 ONLY_FAIL_ATTACH=0
@@ -246,7 +250,7 @@ TOOLCHAIN_TXT="$RUN_DIR/toolchain.txt"
 "$SCRIPT_DIR/toolchain_fingerprint.sh" > "$TOOLCHAIN_TXT"
 
 if [[ -z "$DERIVED_DATA" ]]; then
-  DERIVED_DATA="$RUN_DIR/DerivedData"
+  DERIVED_DATA="$(xcode_shared_derived_data_path "$REPO_ROOT" "$DESTINATION" "$CONFIGURATION")"
 fi
 
 clean_result_bundle() {
@@ -398,10 +402,6 @@ if [[ -n "$XCTESTRUN" ]]; then
     xcodebuild_status=$?
   fi
 elif [[ "$REUSE_BUILD" -eq 1 ]]; then
-  if [[ -z "$DERIVED_DATA" ]]; then
-    DERIVED_DATA="$RUN_DIR/DerivedData"
-  fi
-
   # build-for-testing embeds test-plan/test-config into the generated .xctestrun.
   # (Do not rely on -testPlan being honored by test-without-building.)
   if run_xcodebuild_test "build-for-testing"; then
