@@ -197,6 +197,12 @@ final class TurnStore {
     let key = ResolveLocalTurnKey(
       endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     if let existing = turnsByKey[key] {
+      if existing.status != .inProgress,
+        CompletedRunAlreadyArchived(
+          endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+      {
+        return false
+      }
       existing.ApplyStatus(status, at: now)
       existing.UpdateThreadId(threadId)
       existing.UpdateTurnKey(turnKey)
@@ -207,6 +213,11 @@ final class TurnStore {
           at: now)
       }
       return archived
+    }
+    if CompletedRunAlreadyArchived(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    {
+      return false
     }
     let turn = ActiveTurn(
       endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, startedAt: now)
@@ -620,6 +631,26 @@ final class TurnStore {
     return turnsByKey[key]?.threadId ?? metadataByEndpoint[endpointId]?.threadId
   }
 
+  func ResolveActiveThreadId(endpointId: String, turnId: String, turnKey: String? = nil) -> String?
+  {
+    if let turnKey = NonEmptyString(turnKey) {
+      return turnsByKey["\(endpointId):\(turnKey)"]?.threadId
+    }
+
+    let legacyKey = "\(endpointId):\(turnId)"
+    if let threadId = turnsByKey[legacyKey]?.threadId {
+      return threadId
+    }
+
+    let matchingTurns = turnsByKey.values.filter { turn in
+      turn.endpointId == endpointId && turn.turnId == turnId
+    }
+    guard matchingTurns.count == 1 else {
+      return nil
+    }
+    return matchingTurns.first?.threadId
+  }
+
   func Tick(now: Date) {
     let expiredKeys = turnsByKey.compactMap { key, turn -> String? in
       guard let endedAt = turn.endedAt else {
@@ -763,14 +794,16 @@ final class TurnStore {
       return false
     }
 
-    var runs = completedRunsByEndpoint[turn.endpointId] ?? []
-    let alreadyArchived = runs.contains {
-      RunMatchesTurn($0, turnKey: turn.turnKey, threadId: turn.threadId, turnId: turn.turnId)
-    }
-    if alreadyArchived {
+    if CompletedRunAlreadyArchived(
+      endpointId: turn.endpointId,
+      turnKey: turn.turnKey,
+      threadId: turn.threadId,
+      turnId: turn.turnId)
+    {
       return false
     }
 
+    var runs = completedRunsByEndpoint[turn.endpointId] ?? []
     let metadata = metadataByEndpoint[turn.endpointId]
     let metadataTokenSamples =
       metadata.map {
@@ -814,6 +847,17 @@ final class TurnStore {
     }
     completedRunsByEndpoint[turn.endpointId] = runs
     return true
+  }
+
+  private func CompletedRunAlreadyArchived(
+    endpointId: String,
+    turnKey: String?,
+    threadId: String?,
+    turnId: String
+  ) -> Bool {
+    completedRunsByEndpoint[endpointId]?.contains {
+      RunMatchesTurn($0, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    } == true
   }
 
   private func ExtractPromptPreview(from turn: [String: Any]) -> String? {
@@ -878,10 +922,7 @@ final class TurnStore {
         return true
       }
       if let threadId = NonEmptyString(threadId), let runThreadId = NonEmptyString(run.threadId) {
-        if threadId == runThreadId {
-          return true
-        }
-        return IsPostTurnReviewRun(run) && IsPostTurnReviewTurnId(turnId)
+        return threadId == runThreadId
       }
       return IsPostTurnReviewRun(run) && IsPostTurnReviewTurnId(turnId)
     }

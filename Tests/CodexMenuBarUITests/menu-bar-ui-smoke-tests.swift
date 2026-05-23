@@ -273,6 +273,37 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(
       WaitForStringLabelContaining(of: completedSection, text: "Completed Turns (2)", timeout: 30))
     XCTAssertFalse(String(describing: completedSection.label).contains("Completed Turns (3)"))
+
+    let completedRunPredicate = NSPredicate(
+      format: "identifier BEGINSWITH %@", "turn.completedRun.row.")
+    let completedRunRows = app.buttons.matching(completedRunPredicate)
+    XCTAssertTrue(WaitForQueryCount(completedRunRows, equals: 2, timeout: 5))
+
+    let reviewRunRows = app.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+        "turn.completedRun.row.", "Post-turn review · Completed"))
+    XCTAssertTrue(WaitForQueryCount(reviewRunRows, equals: 1, timeout: 5))
+
+    let latestRows = app.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+        "turn.completedRun.row.", " · latest"))
+    XCTAssertTrue(WaitForQueryCount(latestRows, equals: 1, timeout: 5))
+
+    let reviewRow = reviewRunRows.element(boundBy: 0)
+    XCTAssertTrue(WaitForStringLabelContaining(of: reviewRow, text: " · latest"))
+    XCTAssertTrue(WaitForStringValueContaining(of: reviewRow, text: "Review target"))
+    XCTAssertTrue(WaitForStringValueContaining(of: reviewRow, text: "fixture-delegate-thread"))
+    reviewRow.click()
+
+    let reviewDetails = app.staticTexts.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "turn.completedRun.details.")
+    ).element(boundBy: 0)
+    XCTAssertTrue(reviewDetails.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValueContaining(of: reviewDetails, text: "Post-turn review"))
+    XCTAssertTrue(WaitForStringValueContaining(of: reviewDetails, text: "fixture-delegate-thread"))
+    XCTAssertTrue(WaitForStringValueContaining(of: reviewDetails, text: "Review target"))
     AttachScreenshot(named: "status-center-post-turn-review-lifecycle", app: app)
   }
 
@@ -653,6 +684,21 @@ final class MenuBarUISmokeTests: XCTestCase {
     let predicate = NSPredicate(format: "exists == false")
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func WaitForQueryCount(
+    _ query: XCUIElementQuery,
+    equals expectedCount: Int,
+    timeout: TimeInterval = 5
+  ) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if query.count == expectedCount {
+        return true
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+    return query.count == expectedCount
   }
 
   private func ClickAwayFromStatusPopover(statusItem: XCUIElement) {

@@ -1197,7 +1197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
     let turnKey = ResolveTurnKey(params: params, turn: turn)
-    let threadId = ResolveThreadId(
+    let threadId = ResolveCompletionThreadId(
       params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
     let status = CompletedStatusFromServerValue(turn["status"] as? String)
     let fromSnapshot = params["fromSnapshot"] as? Bool ?? false
@@ -1596,6 +1596,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     return turnStore.ResolveThreadId(endpointId: endpointId, turnId: turnId, turnKey: turnKey)
+  }
+
+  private func ResolveCompletionThreadId(
+    params: [String: Any],
+    endpointId: String,
+    turnId: String,
+    turnKey: String? = nil
+  ) -> String? {
+    if let threadId = StringValue(params["threadId"]) ?? StringValue(params["thread_id"]) {
+      return threadId
+    }
+
+    return turnStore.ResolveActiveThreadId(endpointId: endpointId, turnId: turnId, turnKey: turnKey)
   }
 
   private func ResolveTurnKey(params: [String: Any], turn: [String: Any]? = nil) -> String? {

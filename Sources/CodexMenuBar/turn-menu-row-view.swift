@@ -532,7 +532,7 @@ struct TurnMenuRowView: View {
                 fallbackModel: endpointRow.model,
                 fallbackModelProvider: endpointRow.modelProvider,
                 fallbackThinkingLevel: endpointRow.thinkingLevel,
-                isLastRun: run.turnId == endpointRow.recentRuns.first?.turnId,
+                isLastRun: run.runKey == endpointRow.recentRuns.first?.runKey,
                 isExpanded: expandedRunKeys.contains(run.runKey),
                 onToggle: { onToggleHistoryRun(run.runKey) }
               )
@@ -1230,6 +1230,9 @@ private struct RunHistoryRowView: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .accessibilityLabel(TitleText())
+      .accessibilityValue(TurnDetailsLine() ?? "")
+      .accessibilityIdentifier("turn.completedRun.row.\(run.runKey)")
 
       if let usage = run.tokenUsage, usage.totalTokens > 0 {
         TokenUsageBarView(usage: usage)
