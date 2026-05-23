@@ -5,7 +5,8 @@ set -euo pipefail
 #
 # This script:
 # - launches `codex app-server codexd run` with a repo-local CODEX_HOME + socket path
-# - publishes runtime notifications for regular and delegate turn lifecycles
+# - publishes runtime notifications for regular and delegate turn lifecycles,
+#   including a stale duplicate post-turn review completion
 # - verifies a subscriber can `codexd/hello`, `codexd/snapshot`, then
 #   `codexd/subscribe` with `afterSeq` and receive the replayed `codexd/event` stream
 #
@@ -500,10 +501,9 @@ send_line(prod, {
     "notification": {
       "method": "turn/completed",
       "params": {
-        "threadId": delegate_thread_id,
         "turn": {
           "id": delegate_turn_id,
-          "key": delegate_turn_key,
+          "key": f"stale-{delegate_turn_key}",
           "status": "completed",
         },
       },
@@ -559,6 +559,8 @@ upserts = []
 state_upsert_seen = False
 delegate_upsert_seen = False
 delegate_token_upsert_seen = False
+delegate_completion_seen = False
+stale_duplicate_delegate_completion_seen = False
 notifs = []
 notif_methods = []
 for e in codexd_events:
@@ -597,6 +599,21 @@ for e in codexd_events:
       fail(f"runtimeNotification runtimeId mismatch: {payload_runtime_id!r} != {runtime_id!r}")
     notification = payload.get("notification") or {}
     notif_methods.append(notification.get("method"))
+    if notification.get("method") == "turn/completed":
+      notification_params = notification.get("params") or {}
+      turn = notification_params.get("turn") or {}
+      if (
+        notification_params.get("threadId") == delegate_thread_id
+        and turn.get("id") == delegate_turn_id
+        and turn.get("key") == delegate_turn_key
+      ):
+        delegate_completion_seen = True
+      if (
+        "threadId" not in notification_params
+        and turn.get("id") == delegate_turn_id
+        and turn.get("key") == f"stale-{delegate_turn_key}"
+      ):
+        stale_duplicate_delegate_completion_seen = True
     notifs.append(e)
 
 if not upserts:
@@ -619,6 +636,10 @@ if "item/completed" not in notif_methods:
   fail(f"expected item/completed notification in runtimeNotification events, got: {notif_methods!r}")
 if notif_methods.count("turn/completed") < 3:
   fail(f"expected regular, delegate, and duplicate delegate turn/completed notifications, got: {notif_methods!r}")
+if not delegate_completion_seen:
+  fail("expected keyed delegate turn/completed notification")
+if not stale_duplicate_delegate_completion_seen:
+  fail("expected stale duplicate delegate turn/completed notification without threadId")
 
 subscribe_seq = int(subscribe_response["result"]["seq"])
 if max(seqs) > subscribe_seq:

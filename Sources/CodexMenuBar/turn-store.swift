@@ -185,6 +185,7 @@ final class TurnStore {
       at: now)
   }
 
+  @discardableResult
   func MarkTurnCompleted(
     endpointId: String,
     threadId: String?,
@@ -192,27 +193,34 @@ final class TurnStore {
     turnKey: String? = nil,
     status: TurnExecutionStatus,
     at now: Date
-  ) {
+  ) -> Bool {
     let key = ResolveLocalTurnKey(
       endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     if let existing = turnsByKey[key] {
       existing.ApplyStatus(status, at: now)
       existing.UpdateThreadId(threadId)
       existing.UpdateTurnKey(turnKey)
-      ArchiveCompletedTurnIfNeeded(existing)
-      UpdateTurnMetadata(
-        endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
-        at: now)
-      return
+      let archived = ArchiveCompletedTurnIfNeeded(existing)
+      if archived {
+        UpdateTurnMetadata(
+          endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
+          at: now)
+      }
+      return archived
     }
     let turn = ActiveTurn(
       endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, startedAt: now)
     turn.ApplyStatus(status, at: now)
     turnsByKey[key] = turn
-    ArchiveCompletedTurnIfNeeded(turn)
-    UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
-      at: now)
+    let archived = ArchiveCompletedTurnIfNeeded(turn)
+    if archived {
+      UpdateTurnMetadata(
+        endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
+        at: now)
+    } else {
+      turnsByKey.removeValue(forKey: key)
+    }
+    return archived
   }
 
   func MarkTurnCompletedIfPresent(
@@ -749,9 +757,10 @@ final class TurnStore {
     EndpointRows(activeEndpointIds: activeEndpointIds)
   }
 
-  private func ArchiveCompletedTurnIfNeeded(_ turn: ActiveTurn) {
+  @discardableResult
+  private func ArchiveCompletedTurnIfNeeded(_ turn: ActiveTurn) -> Bool {
     guard turn.status != .inProgress, let endedAt = turn.endedAt else {
-      return
+      return false
     }
 
     var runs = completedRunsByEndpoint[turn.endpointId] ?? []
@@ -759,7 +768,7 @@ final class TurnStore {
       RunMatchesTurn($0, turnKey: turn.turnKey, threadId: turn.threadId, turnId: turn.turnId)
     }
     if alreadyArchived {
-      return
+      return false
     }
 
     let metadata = metadataByEndpoint[turn.endpointId]
@@ -804,6 +813,7 @@ final class TurnStore {
       runs.removeLast(runs.count - maxCompletedRunsPerEndpoint)
     }
     completedRunsByEndpoint[turn.endpointId] = runs
+    return true
   }
 
   private func ExtractPromptPreview(from turn: [String: Any]) -> String? {
@@ -859,25 +869,38 @@ final class TurnStore {
     threadId: String?,
     turnId: String
   ) -> Bool {
+    guard run.turnId == turnId else {
+      return false
+    }
+
     if let turnKey = NonEmptyString(turnKey), let runTurnKey = NonEmptyString(run.turnKey) {
       if turnKey == runTurnKey {
         return true
       }
-      guard run.turnId == turnId else {
-        return false
-      }
       if let threadId = NonEmptyString(threadId), let runThreadId = NonEmptyString(run.threadId) {
-        return threadId == runThreadId
+        if threadId == runThreadId {
+          return true
+        }
+        return IsPostTurnReviewRun(run) && IsPostTurnReviewTurnId(turnId)
       }
-      return false
-    }
-    guard run.turnId == turnId else {
-      return false
+      return IsPostTurnReviewRun(run) && IsPostTurnReviewTurnId(turnId)
     }
     if let threadId = NonEmptyString(threadId), let runThreadId = run.threadId {
       return threadId == runThreadId
     }
     return true
+  }
+
+  private func IsPostTurnReviewRun(_ run: CompletedRun) -> Bool {
+    IsPostTurnReviewTaskKind(run.taskKind) || IsPostTurnReviewTurnId(run.turnId)
+  }
+
+  private func IsPostTurnReviewTaskKind(_ value: String?) -> Bool {
+    NonEmptyString(value)?.lowercased() == "post_turn_completion_review"
+  }
+
+  private func IsPostTurnReviewTurnId(_ turnId: String) -> Bool {
+    turnId.hasPrefix("post-turn-review")
   }
 
   private func ExtractTurnKey(from payload: [String: Any]) -> String? {

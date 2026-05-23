@@ -393,6 +393,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
 
+    if fixture.caseInsensitiveCompare("post-turn-review-lifecycle") == .orderedSame {
+      ApplyPostTurnReviewLifecycleUITestFixture()
+      return
+    }
+
     guard fixture.caseInsensitiveCompare("active-turn") == .orderedSame else {
       return
     }
@@ -793,6 +798,185 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     model.InvalidateView()
   }
 
+  private func ApplyPostTurnReviewLifecycleUITestFixture() {
+    let endpointId = "fixture-endpoint"
+    let mainThreadId = "fixture-main-thread"
+    let delegateThreadId = "fixture-delegate-thread"
+    let delegateTurnId = "post-turn-review-0"
+    let delegateTurnKey = "\(delegateThreadId):\(delegateTurnId)"
+    let now = Date()
+    let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
+
+    settingsModel.connectionState = .connected
+    model.connectionState = .connected
+    model.codexdDiagnostics = CodexdDiagnostics(
+      resolvedSocketPath: "/tmp/codexd-fixture.sock",
+      connectedAt: now,
+      protocolVersion: 1,
+      capabilities: ["eventReplay", "runtimeState"],
+      lastEventSeq: 224
+    )
+    model.SetEndpointIds([endpointId])
+    turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
+    SeedCompletedUITestTurn(
+      endpointId: endpointId,
+      threadId: mainThreadId,
+      turnId: "regular-turn",
+      prompt: "Implement the status center runtime history.",
+      startedAt: now.addingTimeInterval(-1_200),
+      endedAt: now.addingTimeInterval(-1_020),
+      tokenUsage: TokenUsageInfo(
+        inputTokens: 18_200,
+        cachedInputTokens: 7_100,
+        outputTokens: 2_650,
+        reasoningTokens: 1_100,
+        totalTokens: 20_850,
+        contextWindow: 128_000
+      ),
+      command: "./scripts/verify_fast.sh",
+      changedPath: "Sources/CodexMenuBar/turn-store.swift"
+    )
+
+    HandleNotification(
+      method: "turn/started",
+      params: [
+        "endpointId": endpointId,
+        "threadId": delegateThreadId,
+        "turn": [
+          "id": delegateTurnId,
+          "key": delegateTurnKey,
+          "status": "inProgress",
+          "scope": "delegate",
+          "taskKind": "post_turn_completion_review",
+          "sessionSource": "subagent_review",
+          "subAgentSource": "review",
+          "parentTurnId": "regular-turn",
+          "threadName": "Post-turn review",
+          "model": "gpt-5-review",
+          "modelProvider": "OpenAI",
+          "thinkingLevel": "high",
+          "cwd": cwd,
+        ],
+      ]
+    )
+    HandleNotification(
+      method: "turn/progressTrace",
+      params: [
+        "endpointId": endpointId,
+        "threadId": delegateThreadId,
+        "turnId": delegateTurnId,
+        "turnKey": delegateTurnKey,
+        "category": "reasoning",
+        "state": "started",
+        "label": "Reviewing completed turn",
+      ]
+    )
+    model.SyncSectionDisclosureState()
+    model.InvalidateView()
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self] in
+      guard let self else {
+        return
+      }
+      let tokenUsage: [String: Any] = [
+        "modelContextWindow": 128_000,
+        "total": [
+          "inputTokens": 5_500,
+          "cachedInputTokens": 2_200,
+          "outputTokens": 940,
+          "reasoningOutputTokens": 300,
+          "totalTokens": 6_440,
+        ],
+        "last": [
+          "inputTokens": 3_400,
+          "cachedInputTokens": 1_300,
+          "outputTokens": 520,
+          "reasoningOutputTokens": 180,
+          "totalTokens": 3_920,
+        ],
+      ]
+      self.HandleNotification(
+        method: "turn/contextUpdated",
+        params: [
+          "endpointId": endpointId,
+          "threadId": delegateThreadId,
+          "turnId": delegateTurnId,
+          "turnKey": delegateTurnKey,
+          "scope": "delegate",
+          "taskKind": "post_turn_completion_review",
+          "sessionSource": "subagent_review",
+          "subAgentSource": "review",
+          "parentTurnId": "regular-turn",
+          "threadName": "Post-turn review",
+          "model": "gpt-5-review",
+          "modelProvider": "OpenAI",
+          "thinkingLevel": "high",
+          "cwd": cwd,
+          "tokenUsage": tokenUsage,
+        ]
+      )
+      self.HandleNotification(
+        method: "thread/tokenUsage/updated",
+        params: [
+          "endpointId": endpointId,
+          "threadId": delegateThreadId,
+          "turnId": delegateTurnId,
+          "turnKey": delegateTurnKey,
+          "tokenUsage": tokenUsage,
+        ]
+      )
+      self.model.SyncSectionDisclosureState()
+      self.model.InvalidateView()
+    }
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 24.0) { [weak self] in
+      guard let self else {
+        return
+      }
+      let completedAt = Date()
+      self.HandleNotification(
+        method: "turn/completed",
+        params: [
+          "endpointId": endpointId,
+          "threadId": delegateThreadId,
+          "turn": [
+            "id": delegateTurnId,
+            "key": delegateTurnKey,
+            "status": "completed",
+          ],
+        ]
+      )
+      self.turnStore.Tick(now: completedAt.addingTimeInterval(12))
+      self.HandleNotification(
+        method: "turn/contextUpdated",
+        params: [
+          "endpointId": endpointId,
+          "threadId": mainThreadId,
+          "turnId": "regular-turn",
+          "turnKey": "\(mainThreadId):regular-turn",
+          "scope": "primary",
+          "taskKind": "user",
+          "sessionSource": "codex",
+          "model": "gpt-5-codex",
+          "cwd": cwd,
+        ]
+      )
+      self.HandleNotification(
+        method: "turn/completed",
+        params: [
+          "endpointId": endpointId,
+          "turn": [
+            "id": delegateTurnId,
+            "key": "stale-\(delegateTurnKey)",
+            "status": "completed",
+          ],
+        ]
+      )
+      self.model.SyncSectionDisclosureState()
+      self.model.InvalidateView()
+    }
+  }
+
   private func SeedCompletedUITestTurn(
     endpointId: String,
     threadId: String,
@@ -1038,7 +1222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       )
       return
     }
-    turnStore.MarkTurnCompleted(
+    let archived = turnStore.MarkTurnCompleted(
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
@@ -1046,16 +1230,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       status: status,
       at: Date()
     )
-    turnStore.UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: turn,
-      at: Date())
-    ApplyTokenUsageIfPresent(
-      endpointId: endpointId,
-      threadId: threadId,
-      turnId: turnId,
-      turnKey: turnKey,
-      payload: turn["tokenUsage"]
-    )
+    if archived {
+      turnStore.UpdateTurnMetadata(
+        endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: turn,
+        at: Date())
+      ApplyTokenUsageIfPresent(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        turnKey: turnKey,
+        payload: turn["tokenUsage"]
+      )
+    }
   }
 
   private func HandleTurnContextUpdated(params: [String: Any]) {

@@ -243,6 +243,39 @@ final class MenuBarUISmokeTests: XCTestCase {
     AttachScreenshot(named: "status-center-delegate-token-history", app: app)
   }
 
+  func testStatusCenterPostTurnReviewLifecycleRefreshesTokensAndDedupesCompletion() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "post-turn-review-lifecycle")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let row = app.buttons["turn.row.fixture-endpoint"]
+    XCTAssertTrue(row.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringLabelContaining(of: row, text: "Post-turn review"))
+
+    let title = app.descendants(matching: .any)["turn.tokenUsageHistory.title.fixture-endpoint"]
+    let usageDetail = app.descendants(matching: .any)[
+      "turn.tokenUsageHistory.detail.fixture-endpoint"]
+    XCTAssertTrue(title.waitForExistence(timeout: 6))
+    XCTAssertTrue(usageDetail.waitForExistence(timeout: 6))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current post-turn review", timeout: 6))
+    XCTAssertTrue(String(describing: usageDetail.value ?? "").contains("In: 3.4k"))
+
+    let completedSection = app.buttons["turn.completedTurnsSection.fixture-endpoint"]
+    XCTAssertTrue(completedSection.waitForExistence(timeout: 30))
+    XCTAssertTrue(
+      WaitForStringLabelContaining(of: completedSection, text: "Completed Turns (2)", timeout: 30))
+    XCTAssertFalse(String(describing: completedSection.label).contains("Completed Turns (3)"))
+    AttachScreenshot(named: "status-center-post-turn-review-lifecycle", app: app)
+  }
+
   func testStatusCenterShowsDockIcon() throws {
     let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
     let statusItem = try StatusItem(in: app)
