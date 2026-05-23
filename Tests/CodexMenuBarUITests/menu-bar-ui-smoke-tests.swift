@@ -135,7 +135,7 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     let title = app.descendants(matching: .any)["turn.tokenUsageHistory.title.fixture-endpoint"]
     XCTAssertTrue(title.waitForExistence(timeout: 5))
-    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current regular turn"))
 
     let subtitle = app.descendants(matching: .any)[
       "turn.tokenUsageHistory.subtitle.fixture-endpoint"]
@@ -152,22 +152,22 @@ final class MenuBarUISmokeTests: XCTestCase {
     let detail = app.descendants(matching: .any)["turn.tokenUsageHistory.detail.fixture-endpoint"]
     XCTAssertTrue(detail.waitForExistence(timeout: 5))
     XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 5"))
-    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current regular turn"))
     XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 9.1k"))
 
     earlierButton.click()
     XCTAssertTrue(WaitForStringValue(of: position, equals: "3 of 5"))
-    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current regular turn"))
     XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 6.4k"))
 
     earlierButton.click()
     XCTAssertTrue(WaitForStringValue(of: position, equals: "4 of 5"))
-    XCTAssertTrue(WaitForStringValue(of: title, equals: "Latest completed turn"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Latest completed regular turn"))
     XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 18.2k"))
 
     earlierButton.click()
     XCTAssertTrue(WaitForStringValue(of: position, equals: "5 of 5"))
-    XCTAssertTrue(WaitForStringValue(of: title, equals: "Earlier turn"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Earlier regular turn"))
 
     let newerButton = app.buttons["turn.tokenUsageHistory.newer.fixture-endpoint"]
     XCTAssertTrue(newerButton.waitForExistence(timeout: 5))
@@ -179,10 +179,59 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(latestButton.isEnabled)
     latestButton.click()
     XCTAssertTrue(WaitForStringValue(of: position, equals: "1 of 5"))
-    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current turn"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current regular turn"))
     XCTAssertTrue(String(describing: detail.value ?? "").contains("In: 12.8k"))
 
     AttachScreenshot(named: "status-center-token-history", app: app)
+  }
+
+  func testStatusCenterDelegateTurnUsesDelegateTokenHistory() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "delegate-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let row = app.buttons["turn.row.fixture-endpoint"]
+    XCTAssertTrue(row.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringLabelContaining(of: row, text: "Post-turn review"))
+
+    let details = app.descendants(matching: .any)["turn.details.fixture-endpoint"]
+    XCTAssertTrue(details.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValueContaining(of: details, text: "Parent: regular-turn"))
+
+    let position = app.descendants(matching: .any)[
+      "turn.tokenUsageHistory.position.fixture-endpoint"]
+    XCTAssertTrue(position.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "1 of 3"))
+
+    let title = app.descendants(matching: .any)["turn.tokenUsageHistory.title.fixture-endpoint"]
+    let usageDetail = app.descendants(matching: .any)[
+      "turn.tokenUsageHistory.detail.fixture-endpoint"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    XCTAssertTrue(usageDetail.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current post-turn review"))
+    XCTAssertTrue(String(describing: usageDetail.value ?? "").contains("In: 3.4k"))
+
+    let earlierButton = app.buttons["turn.tokenUsageHistory.earlier.fixture-endpoint"]
+    XCTAssertTrue(earlierButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(earlierButton.isEnabled)
+    earlierButton.click()
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 3"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Current post-turn review"))
+    XCTAssertTrue(String(describing: usageDetail.value ?? "").contains("In: 2.1k"))
+
+    earlierButton.click()
+    XCTAssertTrue(WaitForStringValue(of: position, equals: "3 of 3"))
+    XCTAssertTrue(WaitForStringValue(of: title, equals: "Latest completed regular turn"))
+    XCTAssertTrue(String(describing: usageDetail.value ?? "").contains("In: 18.2k"))
+    AttachScreenshot(named: "status-center-delegate-token-history", app: app)
   }
 
   func testStatusCenterRuntimeHistorySectionsBrowseOlderEntries() throws {
@@ -512,6 +561,18 @@ final class MenuBarUISmokeTests: XCTestCase {
     -> Bool
   {
     let predicate = NSPredicate(format: "value CONTAINS %@", expected)
+    let expectation = expectation(for: predicate, evaluatedWith: element)
+    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func WaitForStringLabelContaining(
+    of element: XCUIElement,
+    text expected: String,
+    timeout: TimeInterval = 5
+  )
+    -> Bool
+  {
+    let predicate = NSPredicate(format: "label CONTAINS %@", expected)
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
   }

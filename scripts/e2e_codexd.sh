@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # This script:
 # - launches `codex app-server codexd run` with a repo-local CODEX_HOME + socket path
-# - publishes a small set of runtime notifications (register + turn started/completed)
+# - publishes runtime notifications for regular and delegate turn lifecycles
 # - verifies a subscriber can `codexd/hello`, `codexd/snapshot`, then
 #   `codexd/subscribe` with `afterSeq` and receive the replayed `codexd/event` stream
 #
@@ -286,6 +286,9 @@ prod = connect()
 runtime_id = "rt-e2e"
 thread_id = "thread-e2e"
 turn_id = "turn-e2e"
+delegate_thread_id = "thread-e2e-review"
+delegate_turn_id = "post-turn-review-e2e"
+delegate_turn_key = f"{delegate_thread_id}:{delegate_turn_id}"
 
 send_line(prod, {
   "id": 1,
@@ -414,13 +417,88 @@ send_line(prod, {
     },
   },
 })
+send_line(prod, {
+  "id": 8,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "turn/started",
+      "params": {
+        "threadId": delegate_thread_id,
+        "turn": {
+          "id": delegate_turn_id,
+          "key": delegate_turn_key,
+          "status": "inProgress",
+          "scope": "delegate",
+          "taskKind": "post_turn_completion_review",
+          "sessionSource": "subagent_review",
+          "subAgentSource": "review",
+          "parentTurnId": turn_id,
+          "threadName": "Post-turn review",
+          "model": "gpt-5-review",
+        },
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 9,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "thread/tokenUsage/updated",
+      "params": {
+        "threadId": delegate_thread_id,
+        "turnId": delegate_turn_id,
+        "turnKey": delegate_turn_key,
+        "tokenUsage": {
+          "modelContextWindow": 128000,
+          "last": {
+            "inputTokens": 3400,
+            "cachedInputTokens": 1300,
+            "outputTokens": 520,
+            "reasoningOutputTokens": 180,
+            "totalTokens": 3920,
+          },
+          "total": {
+            "inputTokens": 5500,
+            "cachedInputTokens": 2200,
+            "outputTokens": 940,
+            "reasoningOutputTokens": 300,
+            "totalTokens": 6440,
+          },
+        },
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 10,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "turn/completed",
+      "params": {
+        "threadId": delegate_thread_id,
+        "turn": {
+          "id": delegate_turn_id,
+          "key": delegate_turn_key,
+          "status": "completed",
+        },
+      },
+    },
+  },
+})
 
 # Wait for the last producer ack to ensure events are applied before we subscribe.
 deadline = time.time() + 5.0
 acked = False
 while time.time() < deadline:
   obj = json.loads(recv_line(prod, timeout_s=1.0))
-  if obj.get("id") == 7:
+  if obj.get("id") == 10:
     if "result" not in obj:
       fail(f"missing producer result: {obj!r}")
     acked = True
@@ -432,7 +510,7 @@ prod.close()
 send_line(sub, {"id": 3, "method": "codexd/subscribe", "params": {"afterSeq": after_seq}})
 
 deadline = time.time() + 5.0
-while time.time() < deadline and (subscribe_response is None or len(events) < 7):
+while time.time() < deadline and (subscribe_response is None or len(events) < 10):
   handle_line(recv_line(sub, timeout_s=1.0))
 
 sub.close()
@@ -444,8 +522,8 @@ codexd_events = [e for e in events if e.get("method") == "codexd/event"]
 if not codexd_events:
   fail(f"expected codexd/event notifications, got: {events!r}")
 
-if len(codexd_events) < 7:
-  fail(f"expected >= 7 codexd/event notifications, got {len(codexd_events)}: {codexd_events!r}")
+if len(codexd_events) < 10:
+  fail(f"expected >= 10 codexd/event notifications, got {len(codexd_events)}: {codexd_events!r}")
 
 def event_seq(e):
   try:
@@ -461,6 +539,8 @@ if seqs != sorted(seqs):
 
 upserts = []
 state_upsert_seen = False
+delegate_upsert_seen = False
+delegate_token_upsert_seen = False
 notifs = []
 notif_methods = []
 for e in codexd_events:
@@ -480,6 +560,18 @@ for e in codexd_events:
         and active_turn.get("model") == "gpt-5-codex"
       ):
         state_upsert_seen = True
+      if (
+        active_turn.get("turnId") == delegate_turn_id
+        and active_turn.get("turnKey") == delegate_turn_key
+        and active_turn.get("scope") == "delegate"
+        and active_turn.get("taskKind") == "post_turn_completion_review"
+        and active_turn.get("parentTurnId") == turn_id
+      ):
+        delegate_upsert_seen = True
+        token_usage = active_turn.get("tokenUsage") or {}
+        last_usage = token_usage.get("last") or {}
+        if last_usage.get("inputTokens") == 3400:
+          delegate_token_upsert_seen = True
     upserts.append(e)
   if typ == "runtimeNotification":
     payload_runtime_id = payload.get("runtimeId") or payload.get("runtime_id")
@@ -493,6 +585,10 @@ if not upserts:
   fail(f"expected runtimeUpsert in {len(codexd_events)} events")
 if not state_upsert_seen:
   fail("expected runtime/updateState active turn summary in runtimeUpsert events")
+if not delegate_upsert_seen:
+  fail("expected delegate active turn summary with turnKey in runtimeUpsert events")
+if not delegate_token_upsert_seen:
+  fail("expected delegate token usage to update the keyed active turn")
 if not notifs:
   fail(f"expected runtimeNotification in {len(codexd_events)} events")
 if "turn/started" not in notif_methods:
@@ -503,8 +599,8 @@ if "item/started" not in notif_methods:
   fail(f"expected item/started notification in runtimeNotification events, got: {notif_methods!r}")
 if "item/completed" not in notif_methods:
   fail(f"expected item/completed notification in runtimeNotification events, got: {notif_methods!r}")
-if "turn/completed" not in notif_methods:
-  fail(f"expected turn/completed notification in runtimeNotification events, got: {notif_methods!r}")
+if notif_methods.count("turn/completed") < 2:
+  fail(f"expected regular and delegate turn/completed notifications, got: {notif_methods!r}")
 
 subscribe_seq = int(subscribe_response["result"]["seq"])
 if max(seqs) > subscribe_seq:

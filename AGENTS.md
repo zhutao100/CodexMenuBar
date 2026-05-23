@@ -8,8 +8,9 @@
 - Run (Xcode): `open CodexMenuBar.xcodeproj`
 - Run (SwiftPM): `swift run CodexMenuBar`
 - Evidence run (agent-safe xcresult): `./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination 'platform=macOS' --adhoc-signing --reuse-build --system-attachment-lifetime keepNever --sanitize-screenshots keep --delete-raw-attachments`
-- E2E codexd smoke (artifacts): `./scripts/e2e_codexd.sh`
-- E2E codexd smoke using installed `codex`: `./scripts/e2e_codexd.sh --use-codex-on-path`
+- E2E codexd smoke
+  - using installed `codex`, preferred when available and no `codex` code changes: `./scripts/e2e_codexd.sh --use-codex-on-path`
+  - build `codex` from source: `./scripts/e2e_codexd.sh`
 
 ## Configuration
 
@@ -29,7 +30,7 @@ The menu bar popover keeps global actions as icon buttons in the title row with 
 
 The Status Center sidebar starts compact, is resizable when expanded, restores the last expanded width after collapse/expand, and still switches runtimes through collapsed icon buttons. Preserve the centered `No Codex runtimes` detail empty state when no runtime is selected.
 
-Runtime detail panes keep interactive history controls compact: token usage browses newest/older samples across current-turn rounds and completed turns, excluding total-only context estimates; codexd `runtimeUpsert` snapshots replay active turns before forwarded notifications, so token round seeding must stay idempotent. Long plan, file, command, past-run, and expanded-run histories page instead of silently truncating.
+Runtime detail panes keep interactive history controls compact: token usage browses newest/older samples across current-turn rounds and completed turns, excluding total-only context estimates; codexd `runtimeUpsert` snapshots replay active turns before forwarded notifications, so token round seeding must stay idempotent. Active turn identity is keyed by codexd `turnKey`/thread before legacy turn id so delegate turns do not inherit regular-turn token history. Long plan, file, command, completed-turn, and expanded-run histories page instead of silently truncating.
 
 Icon assets: the app bundle icon is `Sources/CodexMenuBar/Resources/Assets.xcassets/AppIcon.appiconset`, generated from `Resources/svgs/codex-app.svg`; the menu bar template icon loads from `Resources/svgs/codex.svg`. Keep the SVGs valid when replacing icons, then regenerate the Xcode project.
 

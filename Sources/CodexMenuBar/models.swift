@@ -231,6 +231,12 @@ struct EndpointMetadata {
   var thinkingLevel: String?
   var threadId: String?
   var turnId: String?
+  var turnKey: String?
+  var scope: String?
+  var taskKind: String?
+  var subAgentSource: String?
+  var parentTurnId: String?
+  var threadName: String?
   var lastTraceCategory: ProgressCategory?
   var lastTraceLabel: String?
   var lastEventAt: Date?
@@ -256,6 +262,12 @@ struct EndpointRow {
   let thinkingLevel: String?
   let threadId: String?
   let turnId: String?
+  let turnKey: String?
+  let scope: String?
+  let taskKind: String?
+  let subAgentSource: String?
+  let parentTurnId: String?
+  let threadName: String?
   let lastTraceCategory: ProgressCategory?
   let lastTraceLabel: String?
   let lastEventAt: Date?
@@ -289,6 +301,7 @@ struct CompletedRun: Equatable {
   let endpointId: String
   let threadId: String?
   let turnId: String
+  let turnKey: String?
   let startedAt: Date
   let endedAt: Date
   let status: TurnExecutionStatus
@@ -297,6 +310,12 @@ struct CompletedRun: Equatable {
   let model: String?
   let modelProvider: String?
   let thinkingLevel: String?
+  let scope: String?
+  let taskKind: String?
+  let sessionSource: String?
+  let subAgentSource: String?
+  let parentTurnId: String?
+  let threadName: String?
   let tokenUsage: TokenUsageInfo?
   let tokenUsageSamples: [TokenUsageSample]
   let fileChanges: [FileChangeSummary]
@@ -304,7 +323,7 @@ struct CompletedRun: Equatable {
   let traceHistory: [ProgressTraceSnapshot]
 
   var runKey: String {
-    let threadPart = threadId ?? "no-thread"
+    let threadPart = turnKey ?? threadId ?? "no-thread"
     let startedAtSeconds = Int(startedAt.timeIntervalSince1970)
     return "\(threadPart):\(turnId):\(startedAtSeconds)"
   }
@@ -338,11 +357,25 @@ struct CompletedRun: Equatable {
 final class ActiveTurn {
   let endpointId: String
   private(set) var threadId: String?
+  private(set) var turnKey: String?
   let turnId: String
   let startedAt: Date
   private(set) var status: TurnExecutionStatus
   private(set) var endedAt: Date?
   private(set) var latestLabel: String?
+  private(set) var promptPreview: String?
+  private(set) var model: String?
+  private(set) var modelProvider: String?
+  private(set) var thinkingLevel: String?
+  private(set) var cwd: String?
+  private(set) var sessionSource: String?
+  private(set) var scope: String?
+  private(set) var taskKind: String?
+  private(set) var subAgentSource: String?
+  private(set) var parentTurnId: String?
+  private(set) var threadName: String?
+  private(set) var tokenUsageTotal: TokenUsageInfo?
+  private(set) var tokenUsageLast: TokenUsageInfo?
   private var categoryCounts: [ProgressCategory: Int]
   private var seenCategories: [ProgressCategory]
   private(set) var traceHistory: [ProgressTraceSnapshot]
@@ -352,9 +385,10 @@ final class ActiveTurn {
   private(set) var planExplanation: String?
   private(set) var tokenUsageSamples: [TokenUsageSample] = []
 
-  init(endpointId: String, threadId: String?, turnId: String, startedAt: Date) {
+  init(endpointId: String, threadId: String?, turnId: String, turnKey: String?, startedAt: Date) {
     self.endpointId = endpointId
     self.threadId = threadId
+    self.turnKey = turnKey
     self.turnId = turnId
     self.startedAt = startedAt
     self.status = .inProgress
@@ -379,6 +413,39 @@ final class ActiveTurn {
       return
     }
     self.threadId = threadId
+  }
+
+  func UpdateTurnKey(_ turnKey: String?) {
+    guard let turnKey, !turnKey.isEmpty else {
+      return
+    }
+    self.turnKey = turnKey
+  }
+
+  func UpdateMetadata(
+    promptPreview: String? = nil,
+    model: String? = nil,
+    modelProvider: String? = nil,
+    thinkingLevel: String? = nil,
+    cwd: String? = nil,
+    sessionSource: String? = nil,
+    scope: String? = nil,
+    taskKind: String? = nil,
+    subAgentSource: String? = nil,
+    parentTurnId: String? = nil,
+    threadName: String? = nil
+  ) {
+    if let promptPreview { self.promptPreview = promptPreview }
+    if let model { self.model = model }
+    if let modelProvider { self.modelProvider = modelProvider }
+    if let thinkingLevel { self.thinkingLevel = thinkingLevel }
+    if let cwd { self.cwd = cwd }
+    if let sessionSource { self.sessionSource = sessionSource }
+    if let scope { self.scope = scope }
+    if let taskKind { self.taskKind = taskKind }
+    if let subAgentSource { self.subAgentSource = subAgentSource }
+    if let parentTurnId { self.parentTurnId = parentTurnId }
+    if let threadName { self.threadName = threadName }
   }
 
   func ApplyProgress(
@@ -443,8 +510,21 @@ final class ActiveTurn {
     }
   }
 
-  func RecordTokenUsage(_ usage: TokenUsageInfo, at now: Date) {
-    AppendTokenUsageRoundSample(usage, at: now, to: &tokenUsageSamples)
+  func UpdateTokenUsage(
+    total: TokenUsageInfo?,
+    last: TokenUsageInfo?,
+    at now: Date,
+    recordSample: Bool = true
+  ) {
+    if let total {
+      tokenUsageTotal = total
+    }
+    if let last {
+      tokenUsageLast = last
+    }
+    if recordSample, let usage = last ?? total {
+      AppendTokenUsageRoundSample(usage, at: now, to: &tokenUsageSamples)
+    }
   }
 
   func ActiveCategories() -> [ProgressCategory] {

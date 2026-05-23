@@ -374,9 +374,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func ApplyUITestFixtureIfRequested() {
-    guard IsUITestMode(),
-      ArgumentValue(after: "--fixture")?.caseInsensitiveCompare("active-turn") == .orderedSame
-    else {
+    guard IsUITestMode(), let fixture = ArgumentValue(after: "--fixture") else {
+      return
+    }
+
+    if fixture.caseInsensitiveCompare("delegate-turn") == .orderedSame {
+      ApplyDelegateUITestFixture()
+      return
+    }
+
+    guard fixture.caseInsensitiveCompare("active-turn") == .orderedSame else {
       return
     }
 
@@ -650,6 +657,132 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     model.InvalidateView()
   }
 
+  private func ApplyDelegateUITestFixture() {
+    let endpointId = "fixture-endpoint"
+    let mainThreadId = "fixture-main-thread"
+    let delegateThreadId = "fixture-delegate-thread"
+    let delegateTurnId = "post-turn-review-0"
+    let delegateTurnKey = "\(delegateThreadId):\(delegateTurnId)"
+    let now = Date()
+    let startedAt = now.addingTimeInterval(-74)
+    let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
+
+    settingsModel.connectionState = .connected
+    model.connectionState = .connected
+    model.codexdDiagnostics = CodexdDiagnostics(
+      resolvedSocketPath: "/tmp/codexd-fixture.sock",
+      connectedAt: now,
+      protocolVersion: 1,
+      capabilities: ["eventReplay", "runtimeState"],
+      lastEventSeq: 192
+    )
+    model.SetEndpointIds([endpointId])
+    turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
+    SeedCompletedUITestTurn(
+      endpointId: endpointId,
+      threadId: mainThreadId,
+      turnId: "regular-turn",
+      prompt: "Implement the status center runtime history.",
+      startedAt: now.addingTimeInterval(-1_200),
+      endedAt: now.addingTimeInterval(-1_020),
+      tokenUsage: TokenUsageInfo(
+        inputTokens: 18_200,
+        cachedInputTokens: 7_100,
+        outputTokens: 2_650,
+        reasoningTokens: 1_100,
+        totalTokens: 20_850,
+        contextWindow: 128_000
+      ),
+      command: "./scripts/verify_fast.sh",
+      changedPath: "Sources/CodexMenuBar/turn-store.swift"
+    )
+
+    turnStore.UpsertTurnStarted(
+      endpointId: endpointId,
+      threadId: delegateThreadId,
+      turnId: delegateTurnId,
+      turnKey: delegateTurnKey,
+      at: startedAt
+    )
+    turnStore.UpdateTurnMetadata(
+      endpointId: endpointId,
+      threadId: delegateThreadId,
+      turnId: delegateTurnId,
+      turnKey: delegateTurnKey,
+      turn: [
+        "scope": "delegate",
+        "taskKind": "post_turn_completion_review",
+        "sessionSource": "subagent_review",
+        "subAgentSource": "review",
+        "parentTurnId": "regular-turn",
+        "threadName": "Post-turn review",
+        "model": "gpt-5-review",
+        "modelProvider": "OpenAI",
+        "thinkingLevel": "high",
+        "cwd": cwd,
+      ],
+      at: startedAt
+    )
+    turnStore.RecordProgress(
+      endpointId: endpointId,
+      threadId: delegateThreadId,
+      turnId: delegateTurnId,
+      turnKey: delegateTurnKey,
+      category: .reasoning,
+      state: .started,
+      label: "Reviewing completed turn",
+      at: startedAt.addingTimeInterval(8)
+    )
+    turnStore.UpdateTokenUsage(
+      endpointId: endpointId,
+      threadId: delegateThreadId,
+      turnId: delegateTurnId,
+      turnKey: delegateTurnKey,
+      tokenUsageTotal: TokenUsageInfo(
+        inputTokens: 2_100,
+        cachedInputTokens: 900,
+        outputTokens: 420,
+        reasoningTokens: 120,
+        totalTokens: 2_520,
+        contextWindow: 128_000
+      ),
+      tokenUsageLast: TokenUsageInfo(
+        inputTokens: 2_100,
+        cachedInputTokens: 900,
+        outputTokens: 420,
+        reasoningTokens: 120,
+        totalTokens: 2_520,
+        contextWindow: 128_000
+      ),
+      observedAt: startedAt.addingTimeInterval(18)
+    )
+    turnStore.UpdateTokenUsage(
+      endpointId: endpointId,
+      threadId: delegateThreadId,
+      turnId: delegateTurnId,
+      turnKey: delegateTurnKey,
+      tokenUsageTotal: TokenUsageInfo(
+        inputTokens: 5_500,
+        cachedInputTokens: 2_200,
+        outputTokens: 940,
+        reasoningTokens: 300,
+        totalTokens: 6_440,
+        contextWindow: 128_000
+      ),
+      tokenUsageLast: TokenUsageInfo(
+        inputTokens: 3_400,
+        cachedInputTokens: 1_300,
+        outputTokens: 520,
+        reasoningTokens: 180,
+        totalTokens: 3_920,
+        contextWindow: 128_000
+      ),
+      observedAt: startedAt.addingTimeInterval(46)
+    )
+    model.SyncSectionDisclosureState()
+    model.InvalidateView()
+  }
+
   private func SeedCompletedUITestTurn(
     endpointId: String,
     threadId: String,
@@ -843,16 +976,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     else {
       return
     }
-    let threadId = ResolveThreadId(params: params, endpointId: endpointId, turnId: turnId)
+    let turnKey = ResolveTurnKey(params: params, turn: turn)
+    let threadId = ResolveThreadId(
+      params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
     turnStore.ClearError(endpointId: endpointId)
     turnStore.UpsertTurnStarted(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, at: Date())
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, at: Date())
     turnStore.UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turn: turn, at: Date())
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: turn,
+      at: Date())
     ApplyTokenUsageIfPresent(
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       payload: turn["tokenUsage"]
     )
   }
@@ -865,7 +1002,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     else {
       return
     }
-    let threadId = ResolveThreadId(params: params, endpointId: endpointId, turnId: turnId)
+    let turnKey = ResolveTurnKey(params: params, turn: turn)
+    let threadId = ResolveThreadId(
+      params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
     let status = CompletedStatusFromServerValue(turn["status"] as? String)
     let fromSnapshot = params["fromSnapshot"] as? Bool ?? false
     if fromSnapshot {
@@ -873,15 +1012,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         endpointId: endpointId,
         threadId: threadId,
         turnId: turnId,
+        turnKey: turnKey,
         status: status,
         at: Date()
       )
       turnStore.UpdateTurnMetadata(
-        endpointId: endpointId, threadId: threadId, turnId: turnId, turn: turn, at: Date())
+        endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: turn,
+        at: Date())
       ApplyTokenUsageIfPresent(
         endpointId: endpointId,
         threadId: threadId,
         turnId: turnId,
+        turnKey: turnKey,
         payload: turn["tokenUsage"]
       )
       return
@@ -890,15 +1032,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       status: status,
       at: Date()
     )
     turnStore.UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turn: turn, at: Date())
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: turn,
+      at: Date())
     ApplyTokenUsageIfPresent(
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       payload: turn["tokenUsage"]
     )
   }
@@ -908,14 +1053,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard let turnId = StringValue(params["turnId"]) ?? StringValue(params["turn_id"]) else {
       return
     }
-    let threadId = ResolveThreadId(params: params, endpointId: endpointId, turnId: turnId)
+    let turnKey = ResolveTurnKey(params: params)
+    let threadId = ResolveThreadId(
+      params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
 
     turnStore.UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turn: params, at: Date())
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: params,
+      at: Date())
     ApplyTokenUsageIfPresent(
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       payload: params["tokenUsage"]
     )
   }
@@ -955,13 +1104,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     else {
       return
     }
-    let threadId = ResolveThreadId(params: params, endpointId: endpointId, turnId: turnId)
+    let turnKey = ResolveTurnKey(params: params)
+    let threadId = ResolveThreadId(
+      params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
 
     let label = params["label"] as? String
     turnStore.RecordProgress(
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       category: category,
       state: state,
       label: label,
@@ -979,18 +1131,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     else {
       return
     }
-    let threadId = ResolveThreadId(params: params, endpointId: endpointId, turnId: turnId)
+    let turnKey = ResolveTurnKey(params: params)
+    let threadId = ResolveThreadId(
+      params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
 
     turnStore.ApplyItemMetadata(
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       item: item,
       at: Date()
     )
 
     ExtractItemDetails(
-      endpointId: endpointId, turnId: turnId, item: item, itemType: itemType)
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, item: item,
+      itemType: itemType)
 
     guard let category = CategoryFromItemType(itemType) else {
       return
@@ -1000,6 +1156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       category: category,
       state: state,
       label: nil,
@@ -1008,7 +1165,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func ExtractItemDetails(
-    endpointId: String, turnId: String, item: [String: Any], itemType: String
+    endpointId: String,
+    threadId: String?,
+    turnId: String,
+    turnKey: String?,
+    item: [String: Any],
+    itemType: String
   ) {
     switch itemType {
     case "commandExecution":
@@ -1019,6 +1181,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       turnStore.RecordCommand(
         endpointId: endpointId,
         turnId: turnId,
+        turnKey: turnKey,
+        threadId: threadId,
         command: CommandSummary(
           command: command,
           status: CommandExecutionState(serverValue: statusStr),
@@ -1041,6 +1205,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         turnStore.RecordFileChange(
           endpointId: endpointId,
           turnId: turnId,
+          turnKey: turnKey,
+          threadId: threadId,
           change: FileChangeSummary(path: path, kind: FileChangeKind(serverValue: kindStr))
         )
       }
@@ -1074,6 +1240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard let usage = params["tokenUsage"] as? [String: Any] else { return }
     let threadId = StringValue(params["threadId"]) ?? StringValue(params["thread_id"])
     let turnId = StringValue(params["turnId"]) ?? StringValue(params["turn_id"])
+    let turnKey = ResolveTurnKey(params: params)
 
     let parsedUsage = ParseThreadTokenUsage(usage)
 
@@ -1081,6 +1248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       tokenUsageTotal: parsedUsage.total,
       tokenUsageLast: parsedUsage.last
     )
@@ -1090,6 +1258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     endpointId: String,
     threadId: String?,
     turnId: String,
+    turnKey: String?,
     payload: Any?
   ) {
     guard let usage = payload as? [String: Any] else {
@@ -1100,6 +1269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       endpointId: endpointId,
       threadId: threadId,
       turnId: turnId,
+      turnKey: turnKey,
       tokenUsageTotal: parsedUsage.total,
       tokenUsageLast: parsedUsage.last
     )
@@ -1145,9 +1315,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let explanation = StringValue(params["explanation"])
     let steps = ParsePlanSteps(params["plan"])
+    let turnKey = ResolveTurnKey(params: params)
+    let threadId = ResolveThreadId(
+      params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
 
     turnStore.UpdatePlan(
-      endpointId: endpointId, turnId: turnId, steps: steps, explanation: explanation)
+      endpointId: endpointId,
+      turnId: turnId,
+      turnKey: turnKey,
+      threadId: threadId,
+      steps: steps,
+      explanation: explanation
+    )
   }
 
   private func HandleError(params: [String: Any]) {
@@ -1213,13 +1392,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func ResolveThreadId(
     params: [String: Any],
     endpointId: String,
-    turnId: String
+    turnId: String,
+    turnKey: String? = nil
   ) -> String? {
     if let threadId = StringValue(params["threadId"]) ?? StringValue(params["thread_id"]) {
       return threadId
     }
 
-    return turnStore.ResolveThreadId(endpointId: endpointId, turnId: turnId)
+    return turnStore.ResolveThreadId(endpointId: endpointId, turnId: turnId, turnKey: turnKey)
+  }
+
+  private func ResolveTurnKey(params: [String: Any], turn: [String: Any]? = nil) -> String? {
+    if let turn,
+      let turnKey = StringValue(turn["key"]) ?? StringValue(turn["turnKey"])
+        ?? StringValue(turn["turn_key"])
+    {
+      return turnKey
+    }
+    return StringValue(params["turnKey"]) ?? StringValue(params["turn_key"])
+      ?? StringValue(params["key"])
   }
 
   private func StringValue(_ value: Any?) -> String? {

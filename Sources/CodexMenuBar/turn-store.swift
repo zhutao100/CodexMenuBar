@@ -10,13 +10,62 @@ final class TurnStore {
   private let completionRetentionSeconds: TimeInterval = 10
   private let maxCompletedRunsPerEndpoint = 50
 
-  private func TurnKey(endpointId: String, turnId: String) -> String {
-    "\(endpointId):\(turnId)"
+  private func LocalTurnKey(
+    endpointId: String,
+    turnKey: String?,
+    threadId: String?,
+    turnId: String
+  ) -> String {
+    if let turnKey = NonEmptyString(turnKey) {
+      return "\(endpointId):\(turnKey)"
+    }
+    if let threadId = NonEmptyString(threadId) {
+      return "\(endpointId):\(threadId):\(turnId)"
+    }
+    return "\(endpointId):\(turnId)"
+  }
+
+  private func ResolveLocalTurnKey(
+    endpointId: String,
+    turnKey: String?,
+    threadId: String?,
+    turnId: String
+  ) -> String {
+    let candidates = [
+      NonEmptyString(turnKey).map { "\(endpointId):\($0)" },
+      NonEmptyString(threadId).map { "\(endpointId):\($0):\(turnId)" },
+      "\(endpointId):\(turnId)",
+    ].compactMap { $0 }
+
+    if let existing = candidates.first(where: { turnsByKey[$0] != nil }) {
+      return existing
+    }
+
+    let matchingKeys = turnsByKey.compactMap { key, turn -> String? in
+      guard turn.endpointId == endpointId, turn.turnId == turnId else {
+        return nil
+      }
+      if let turnKey = NonEmptyString(turnKey), turn.turnKey == turnKey {
+        return key
+      }
+      if let threadId = NonEmptyString(threadId), turn.threadId == threadId {
+        return key
+      }
+      return key
+    }
+    if matchingKeys.count == 1, let onlyMatch = matchingKeys.first {
+      return onlyMatch
+    }
+
+    return LocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
   }
 
   private func SeedTokenUsageSamplesIfNeeded(
     into turn: ActiveTurn,
     endpointId: String,
+    turnKey: String?,
+    threadId: String?,
     turnId: String
   ) {
     // codexd snapshots replay already-active turns. Only seed a newly-created
@@ -26,28 +75,64 @@ final class TurnStore {
     }
 
     guard let metadata = metadataByEndpoint[endpointId],
-      metadata.turnId == turnId
+      MetadataMatchesTurn(metadata, turnKey: turnKey, threadId: threadId, turnId: turnId)
     else {
       return
     }
 
+    turn.UpdateTokenUsage(
+      total: metadata.tokenUsageTotal,
+      last: metadata.tokenUsageLast,
+      at: Date(),
+      recordSample: false
+    )
     for sample in metadata.tokenUsageSamples {
-      turn.RecordTokenUsage(sample.usage, at: sample.observedAt)
+      turn.UpdateTokenUsage(total: nil, last: sample.usage, at: sample.observedAt)
     }
   }
 
   private func ApplyTurnIdentity(
     to metadata: inout EndpointMetadata,
+    turnKey: String?,
     threadId: String?,
     turnId: String
   ) {
-    if metadata.turnId != nil && metadata.turnId != turnId {
+    let changedTurn =
+      metadata.turnId != nil
+      && (metadata.turnId != turnId
+        || (turnKey != nil && metadata.turnKey != nil && metadata.turnKey != turnKey)
+        || (threadId != nil && metadata.threadId != nil && metadata.threadId != threadId))
+    if changedTurn {
+      metadata.promptPreview = nil
+      metadata.tokenUsageTotal = nil
+      metadata.tokenUsageLast = nil
       metadata.tokenUsageSamples.removeAll()
+    }
+    if let turnKey {
+      metadata.turnKey = turnKey
     }
     if let threadId {
       metadata.threadId = threadId
     }
     metadata.turnId = turnId
+  }
+
+  private func MetadataMatchesTurn(
+    _ metadata: EndpointMetadata,
+    turnKey: String?,
+    threadId: String?,
+    turnId: String
+  ) -> Bool {
+    guard metadata.turnId == turnId else {
+      return false
+    }
+    if let turnKey = NonEmptyString(turnKey), let metadataTurnKey = metadata.turnKey {
+      return turnKey == metadataTurnKey
+    }
+    if let threadId = NonEmptyString(threadId), let metadataThreadId = metadata.threadId {
+      return threadId == metadataThreadId
+    }
+    return true
   }
 
   func UpdateRuntimeMetadata(endpointId: String, cwd: String?, sessionSource: String?) {
@@ -57,81 +142,105 @@ final class TurnStore {
     metadataByEndpoint[endpointId] = metadata
   }
 
-  func UpsertTurnStarted(endpointId: String, threadId: String?, turnId: String, at now: Date) {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+  func UpsertTurnStarted(
+    endpointId: String,
+    threadId: String?,
+    turnId: String,
+    turnKey: String? = nil,
+    at now: Date
+  ) {
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     if let existing = turnsByKey[key] {
       existing.ApplyStatus(.inProgress, at: now)
       existing.UpdateThreadId(threadId)
-      SeedTokenUsageSamplesIfNeeded(into: existing, endpointId: endpointId, turnId: turnId)
+      existing.UpdateTurnKey(turnKey)
+      SeedTokenUsageSamplesIfNeeded(
+        into: existing, endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId
+      )
       UpdateTurnMetadata(
-        endpointId: endpointId, threadId: threadId, turnId: turnId, turn: nil, at: now)
+        endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
+        at: now)
       return
     }
     let turn = ActiveTurn(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, startedAt: now)
-    SeedTokenUsageSamplesIfNeeded(into: turn, endpointId: endpointId, turnId: turnId)
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, startedAt: now)
+    SeedTokenUsageSamplesIfNeeded(
+      into: turn, endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     turnsByKey[key] = turn
     UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turn: nil, at: now)
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
+      at: now)
   }
 
   func MarkTurnCompleted(
     endpointId: String,
     threadId: String?,
     turnId: String,
+    turnKey: String? = nil,
     status: TurnExecutionStatus,
     at now: Date
   ) {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     if let existing = turnsByKey[key] {
       existing.ApplyStatus(status, at: now)
       existing.UpdateThreadId(threadId)
+      existing.UpdateTurnKey(turnKey)
       ArchiveCompletedTurnIfNeeded(existing)
       UpdateTurnMetadata(
-        endpointId: endpointId, threadId: threadId, turnId: turnId, turn: nil, at: now)
+        endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
+        at: now)
       return
     }
     let turn = ActiveTurn(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, startedAt: now)
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, startedAt: now)
     turn.ApplyStatus(status, at: now)
     turnsByKey[key] = turn
     ArchiveCompletedTurnIfNeeded(turn)
     UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turn: nil, at: now)
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
+      at: now)
   }
 
   func MarkTurnCompletedIfPresent(
     endpointId: String,
     threadId: String?,
     turnId: String,
+    turnKey: String? = nil,
     status: TurnExecutionStatus,
     at now: Date
   ) {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     guard let existing = turnsByKey[key] else {
       return
     }
     existing.ApplyStatus(status, at: now)
     existing.UpdateThreadId(threadId)
+    existing.UpdateTurnKey(turnKey)
     ArchiveCompletedTurnIfNeeded(existing)
     UpdateTurnMetadata(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turn: nil, at: now)
+      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: nil,
+      at: now)
   }
 
   func RecordProgress(
     endpointId: String,
     threadId: String?,
     turnId: String,
+    turnKey: String? = nil,
     category: ProgressCategory,
     state: ProgressState,
     label: String?,
     at now: Date
   ) {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     let turn = turnsByKey[key]
     if turn == nil && state == .completed {
       var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
-      ApplyTurnIdentity(to: &metadata, threadId: threadId, turnId: turnId)
+      ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: turnId)
       metadata.lastTraceCategory = category
       if let label, !label.isEmpty {
         metadata.lastTraceLabel = label
@@ -142,16 +251,22 @@ final class TurnStore {
     }
 
     let activeTurn =
-      turn ?? ActiveTurn(endpointId: endpointId, threadId: threadId, turnId: turnId, startedAt: now)
+      turn
+      ?? ActiveTurn(
+        endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, startedAt: now
+      )
     if turn == nil {
-      SeedTokenUsageSamplesIfNeeded(into: activeTurn, endpointId: endpointId, turnId: turnId)
+      SeedTokenUsageSamplesIfNeeded(
+        into: activeTurn, endpointId: endpointId, turnKey: turnKey, threadId: threadId,
+        turnId: turnId)
     }
     turnsByKey[key] = activeTurn
     activeTurn.UpdateThreadId(threadId)
+    activeTurn.UpdateTurnKey(turnKey)
     activeTurn.ApplyProgress(category: category, state: state, label: label, at: now)
 
     var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
-    ApplyTurnIdentity(to: &metadata, threadId: threadId, turnId: turnId)
+    ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: turnId)
     metadata.lastTraceCategory = category
     if let label, !label.isEmpty {
       metadata.lastTraceLabel = label
@@ -177,16 +292,25 @@ final class TurnStore {
       metadata.chatTurnCount = turns.count
       if let latestTurn = turns.last {
         if let turnId = NonEmptyString(latestTurn["id"]) {
-          ApplyTurnIdentity(to: &metadata, threadId: metadata.threadId, turnId: turnId)
+          let turnKey = ExtractTurnKey(from: latestTurn)
+          ApplyTurnIdentity(
+            to: &metadata, turnKey: turnKey, threadId: metadata.threadId, turnId: turnId)
         }
         metadata.model = ExtractModelIdentifier(from: latestTurn) ?? metadata.model
         metadata.modelProvider = ExtractModelProvider(from: latestTurn) ?? metadata.modelProvider
         metadata.thinkingLevel = ExtractThinkingLevel(from: latestTurn) ?? metadata.thinkingLevel
+        ApplyRuntimeContextFields(from: latestTurn, to: &metadata)
         if let threadId = metadata.threadId,
           let turnId = metadata.turnId
         {
-          let key = TurnKey(endpointId: endpointId, turnId: turnId)
+          let key = ResolveLocalTurnKey(
+            endpointId: endpointId,
+            turnKey: metadata.turnKey,
+            threadId: threadId,
+            turnId: turnId
+          )
           turnsByKey[key]?.UpdateThreadId(threadId)
+          turnsByKey[key]?.UpdateTurnKey(metadata.turnKey)
         }
         if let promptPreview = ExtractPromptPreview(from: latestTurn) {
           metadata.promptPreview = promptPreview
@@ -204,21 +328,50 @@ final class TurnStore {
     endpointId: String,
     threadId: String?,
     turnId: String,
+    turnKey: String? = nil,
     turn: [String: Any]?,
     at now: Date
   ) {
     var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
-    ApplyTurnIdentity(to: &metadata, threadId: threadId, turnId: turnId)
+    ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    let localKey = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    let activeTurn = turnsByKey[localKey]
+    activeTurn?.UpdateThreadId(threadId)
+    activeTurn?.UpdateTurnKey(turnKey)
     if let turn {
-      if let promptPreview = ExtractPromptPreview(from: turn) {
+      let promptPreview = ExtractPromptPreview(from: turn)
+      if let promptPreview {
         metadata.promptPreview = promptPreview
       }
 
-      metadata.model = ExtractModelIdentifier(from: turn) ?? metadata.model
-      metadata.modelProvider = ExtractModelProvider(from: turn) ?? metadata.modelProvider
-      metadata.thinkingLevel = ExtractThinkingLevel(from: turn) ?? metadata.thinkingLevel
-      metadata.cwd = NonEmptyString(turn["cwd"]) ?? metadata.cwd
-      metadata.sessionSource = NonEmptyString(turn["sessionSource"]) ?? metadata.sessionSource
+      let model = ExtractModelIdentifier(from: turn)
+      let modelProvider = ExtractModelProvider(from: turn)
+      let thinkingLevel = ExtractThinkingLevel(from: turn)
+      let cwd = NonEmptyString(turn["cwd"])
+      let sessionSource = NonEmptyString(turn["sessionSource"])
+
+      metadata.model = model ?? metadata.model
+      metadata.modelProvider = modelProvider ?? metadata.modelProvider
+      metadata.thinkingLevel = thinkingLevel ?? metadata.thinkingLevel
+      metadata.cwd = cwd ?? metadata.cwd
+      metadata.sessionSource = sessionSource ?? metadata.sessionSource
+      ApplyRuntimeContextFields(from: turn, to: &metadata)
+      activeTurn?.UpdateMetadata(
+        promptPreview: promptPreview,
+        model: model,
+        modelProvider: modelProvider,
+        thinkingLevel: thinkingLevel,
+        cwd: cwd,
+        sessionSource: sessionSource,
+        scope: NonEmptyString(turn["scope"]),
+        taskKind: NonEmptyString(turn["taskKind"]) ?? NonEmptyString(turn["task_kind"]),
+        subAgentSource: NonEmptyString(turn["subAgentSource"])
+          ?? NonEmptyString(turn["sub_agent_source"]),
+        parentTurnId: NonEmptyString(turn["parentTurnId"])
+          ?? NonEmptyString(turn["parent_turn_id"]),
+        threadName: NonEmptyString(turn["threadName"]) ?? NonEmptyString(turn["thread_name"])
+      )
     }
     metadata.lastEventAt = now
     metadataByEndpoint[endpointId] = metadata
@@ -228,11 +381,15 @@ final class TurnStore {
     endpointId: String,
     threadId: String?,
     turnId: String,
+    turnKey: String? = nil,
     item: [String: Any],
     at now: Date
   ) {
     var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
-    ApplyTurnIdentity(to: &metadata, threadId: threadId, turnId: turnId)
+    ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    let activeTurn = turnsByKey[key]
 
     let itemType = CanonicalItemType(item["type"])
 
@@ -242,12 +399,14 @@ final class TurnStore {
       ]
       if let promptPreview = ExtractPromptPreview(from: pseudoTurn) {
         metadata.promptPreview = promptPreview
+        activeTurn?.UpdateMetadata(promptPreview: promptPreview)
       }
     }
 
     if itemType == "commandexecution" {
       if let cwd = NonEmptyString(item["cwd"]) {
         metadata.cwd = cwd
+        activeTurn?.UpdateMetadata(cwd: cwd)
       }
     }
 
@@ -259,13 +418,14 @@ final class TurnStore {
     endpointId: String,
     threadId: String?,
     turnId: String?,
+    turnKey: String? = nil,
     tokenUsageTotal: TokenUsageInfo?,
     tokenUsageLast: TokenUsageInfo?,
     observedAt: Date = Date()
   ) {
     var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
     if let turnId {
-      ApplyTurnIdentity(to: &metadata, threadId: threadId, turnId: turnId)
+      ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: turnId)
     } else if let threadId {
       metadata.threadId = threadId
     }
@@ -284,8 +444,10 @@ final class TurnStore {
     let runTokenUsage = tokenUsageLast ?? tokenUsageTotal
     if let runTokenUsage {
       AppendTokenUsageRoundSample(runTokenUsage, at: observedAt, to: &metadata.tokenUsageSamples)
-      let key = TurnKey(endpointId: endpointId, turnId: turnId)
-      turnsByKey[key]?.RecordTokenUsage(runTokenUsage, at: observedAt)
+      let key = ResolveLocalTurnKey(
+        endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+      turnsByKey[key]?.UpdateTokenUsage(
+        total: tokenUsageTotal, last: tokenUsageLast, at: observedAt)
     }
     metadataByEndpoint[endpointId] = metadata
 
@@ -295,13 +457,7 @@ final class TurnStore {
 
     guard
       let index = runs.firstIndex(where: { run in
-        guard run.turnId == turnId else {
-          return false
-        }
-        if let threadId {
-          return run.threadId == threadId
-        }
-        return true
+        RunMatchesTurn(run, turnKey: turnKey, threadId: threadId, turnId: turnId)
       })
     else {
       return
@@ -318,6 +474,7 @@ final class TurnStore {
       endpointId: run.endpointId,
       threadId: run.threadId,
       turnId: run.turnId,
+      turnKey: run.turnKey,
       startedAt: run.startedAt,
       endedAt: run.endedAt,
       status: run.status,
@@ -326,6 +483,12 @@ final class TurnStore {
       model: run.model,
       modelProvider: run.modelProvider,
       thinkingLevel: run.thinkingLevel,
+      scope: run.scope,
+      taskKind: run.taskKind,
+      sessionSource: run.sessionSource,
+      subAgentSource: run.subAgentSource,
+      parentTurnId: run.parentTurnId,
+      threadName: run.threadName,
       tokenUsage: updatedRunTokenUsage,
       tokenUsageSamples: runTokenUsageSamples,
       fileChanges: run.fileChanges,
@@ -366,18 +529,40 @@ final class TurnStore {
     metadataByEndpoint[endpointId] = metadata
   }
 
-  func UpdatePlan(endpointId: String, turnId: String, steps: [PlanStepInfo], explanation: String?) {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+  func UpdatePlan(
+    endpointId: String,
+    turnId: String,
+    turnKey: String? = nil,
+    threadId: String? = nil,
+    steps: [PlanStepInfo],
+    explanation: String?
+  ) {
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     turnsByKey[key]?.UpdatePlan(steps: steps, explanation: explanation)
   }
 
-  func RecordFileChange(endpointId: String, turnId: String, change: FileChangeSummary) {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+  func RecordFileChange(
+    endpointId: String,
+    turnId: String,
+    turnKey: String? = nil,
+    threadId: String? = nil,
+    change: FileChangeSummary
+  ) {
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     turnsByKey[key]?.UpsertFileChange(change)
   }
 
-  func RecordCommand(endpointId: String, turnId: String, command: CommandSummary) {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+  func RecordCommand(
+    endpointId: String,
+    turnId: String,
+    turnKey: String? = nil,
+    threadId: String? = nil,
+    command: CommandSummary
+  ) {
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     turnsByKey[key]?.UpsertCommand(command)
   }
 
@@ -392,17 +577,26 @@ final class TurnStore {
       guard turn.status == .inProgress else {
         continue
       }
-      let key = TurnKey(endpointId: endpointId, turnId: turn.turnId)
+      let key = LocalTurnKey(
+        endpointId: endpointId, turnKey: turn.turnKey, threadId: turn.threadId, turnId: turn.turnId)
+      let legacyKey = "\(endpointId):\(turn.turnId)"
+      let threadKey = turn.threadId.map { "\(endpointId):\($0):\(turn.turnId)" }
       let isActive =
-        activeSet.contains(key) || activeSet.contains { $0.hasSuffix(":\(turn.turnId)") }
+        activeSet.contains(key) || activeSet.contains(legacyKey)
+        || threadKey.map(activeSet.contains) == true
       if isActive { continue }
       turn.ApplyStatus(.completed, at: now)
       ArchiveCompletedTurnIfNeeded(turn)
     }
   }
 
-  func ResolveThreadId(endpointId: String, turnId: String) -> String? {
-    let key = TurnKey(endpointId: endpointId, turnId: turnId)
+  func ResolveThreadId(endpointId: String, turnId: String, turnKey: String? = nil) -> String? {
+    let key = ResolveLocalTurnKey(
+      endpointId: endpointId,
+      turnKey: turnKey,
+      threadId: nil,
+      turnId: turnId
+    )
     return turnsByKey[key]?.threadId ?? metadataByEndpoint[endpointId]?.threadId
   }
 
@@ -483,27 +677,46 @@ final class TurnStore {
     let sortedEndpointIds = endpointIds.sorted()
     return sortedEndpointIds.map { endpointId in
       let activeTurn = activeTurnByEndpoint[endpointId]
-
       let metadata = metadataByEndpoint[endpointId]
+      let isActive = activeTurn != nil
+      let promptPreview = isActive ? activeTurn?.promptPreview : metadata?.promptPreview
+      let cwd = isActive ? activeTurn?.cwd ?? metadata?.cwd : metadata?.cwd
+      let model = isActive ? activeTurn?.model ?? metadata?.model : metadata?.model
+      let modelProvider =
+        isActive ? activeTurn?.modelProvider ?? metadata?.modelProvider : metadata?.modelProvider
+      let thinkingLevel =
+        isActive ? activeTurn?.thinkingLevel ?? metadata?.thinkingLevel : metadata?.thinkingLevel
+      let sessionSource =
+        isActive ? activeTurn?.sessionSource ?? metadata?.sessionSource : metadata?.sessionSource
+      let tokenUsageTotal = isActive ? activeTurn?.tokenUsageTotal : metadata?.tokenUsageTotal
+      let tokenUsageLast = isActive ? activeTurn?.tokenUsageLast : metadata?.tokenUsageLast
+      let tokenUsageSamples =
+        isActive ? activeTurn?.tokenUsageSamples ?? [] : metadata?.tokenUsageSamples ?? []
       return EndpointRow(
         endpointId: endpointId,
         activeTurn: activeTurn,
         recentRuns: completedRunsByEndpoint[endpointId] ?? [],
         chatTitle: metadata?.chatTitle,
-        promptPreview: metadata?.promptPreview,
+        promptPreview: promptPreview,
         chatTurnCount: metadata?.chatTurnCount,
-        cwd: metadata?.cwd,
-        model: metadata?.model,
-        modelProvider: metadata?.modelProvider,
-        thinkingLevel: metadata?.thinkingLevel,
+        cwd: cwd,
+        model: model,
+        modelProvider: modelProvider,
+        thinkingLevel: thinkingLevel,
         threadId: activeTurn?.threadId ?? metadata?.threadId,
         turnId: activeTurn?.turnId ?? metadata?.turnId,
+        turnKey: activeTurn?.turnKey ?? metadata?.turnKey,
+        scope: activeTurn?.scope ?? metadata?.scope,
+        taskKind: activeTurn?.taskKind ?? metadata?.taskKind,
+        subAgentSource: activeTurn?.subAgentSource ?? metadata?.subAgentSource,
+        parentTurnId: activeTurn?.parentTurnId ?? metadata?.parentTurnId,
+        threadName: activeTurn?.threadName ?? metadata?.threadName,
         lastTraceCategory: metadata?.lastTraceCategory,
         lastTraceLabel: activeTurn?.latestLabel ?? metadata?.lastTraceLabel,
         lastEventAt: metadata?.lastEventAt,
-        tokenUsageTotal: metadata?.tokenUsageTotal,
-        tokenUsageLast: metadata?.tokenUsageLast,
-        tokenUsageSamples: activeTurn?.tokenUsageSamples ?? metadata?.tokenUsageSamples ?? [],
+        tokenUsageTotal: tokenUsageTotal,
+        tokenUsageLast: tokenUsageLast,
+        tokenUsageSamples: tokenUsageSamples,
         latestError: metadata?.latestError,
         fileChanges: activeTurn?.fileChanges ?? [],
         commands: activeTurn?.commands ?? [],
@@ -511,7 +724,7 @@ final class TurnStore {
         planExplanation: activeTurn?.planExplanation,
         gitInfo: metadata?.gitInfo,
         rateLimits: metadata?.rateLimits ?? globalRateLimits,
-        sessionSource: metadata?.sessionSource
+        sessionSource: sessionSource
       )
     }
   }
@@ -531,7 +744,7 @@ final class TurnStore {
 
     var runs = completedRunsByEndpoint[turn.endpointId] ?? []
     let alreadyArchived = runs.contains {
-      $0.turnId == turn.turnId && $0.threadId == turn.threadId
+      RunMatchesTurn($0, turnKey: turn.turnKey, threadId: turn.threadId, turnId: turn.turnId)
     }
     if alreadyArchived {
       return
@@ -539,23 +752,33 @@ final class TurnStore {
 
     let metadata = metadataByEndpoint[turn.endpointId]
     let metadataTokenSamples =
-      metadata?.turnId == turn.turnId ? metadata?.tokenUsageSamples ?? [] : []
+      metadata.map {
+        MetadataMatchesTurn($0, turnKey: turn.turnKey, threadId: turn.threadId, turnId: turn.turnId)
+      } == true ? metadata?.tokenUsageSamples ?? [] : []
     let tokenUsageSamples =
       turn.tokenUsageSamples.isEmpty ? metadataTokenSamples : turn.tokenUsageSamples
-    let tokenUsage = tokenUsageSamples.last?.usage ?? metadata?.tokenUsageLast
+    let tokenUsage =
+      tokenUsageSamples.last?.usage ?? turn.tokenUsageLast ?? metadata?.tokenUsageLast
     runs.insert(
       CompletedRun(
         endpointId: turn.endpointId,
         threadId: turn.threadId,
         turnId: turn.turnId,
+        turnKey: turn.turnKey,
         startedAt: turn.startedAt,
         endedAt: endedAt,
         status: turn.status,
         latestLabel: turn.latestLabel,
-        promptPreview: metadata?.promptPreview,
-        model: metadata?.model,
-        modelProvider: metadata?.modelProvider,
-        thinkingLevel: metadata?.thinkingLevel,
+        promptPreview: turn.promptPreview ?? metadata?.promptPreview,
+        model: turn.model ?? metadata?.model,
+        modelProvider: turn.modelProvider ?? metadata?.modelProvider,
+        thinkingLevel: turn.thinkingLevel ?? metadata?.thinkingLevel,
+        scope: turn.scope ?? metadata?.scope,
+        taskKind: turn.taskKind ?? metadata?.taskKind,
+        sessionSource: turn.sessionSource ?? metadata?.sessionSource,
+        subAgentSource: turn.subAgentSource ?? metadata?.subAgentSource,
+        parentTurnId: turn.parentTurnId ?? metadata?.parentTurnId,
+        threadName: turn.threadName ?? metadata?.threadName,
         tokenUsage: tokenUsage?.isTurnRoundUsage == true ? tokenUsage : nil,
         tokenUsageSamples: tokenUsageSamples,
         fileChanges: turn.fileChanges,
@@ -616,6 +839,52 @@ final class TurnStore {
     let combined = textParts.joined(separator: " ").trimmingCharacters(
       in: .whitespacesAndNewlines)
     return combined.isEmpty ? nil : combined
+  }
+
+  private func RunMatchesTurn(
+    _ run: CompletedRun,
+    turnKey: String?,
+    threadId: String?,
+    turnId: String
+  ) -> Bool {
+    if let turnKey = NonEmptyString(turnKey), let runTurnKey = run.turnKey {
+      return turnKey == runTurnKey
+    }
+    guard run.turnId == turnId else {
+      return false
+    }
+    if let threadId = NonEmptyString(threadId), let runThreadId = run.threadId {
+      return threadId == runThreadId
+    }
+    return true
+  }
+
+  private func ExtractTurnKey(from payload: [String: Any]) -> String? {
+    NonEmptyString(payload["key"]) ?? NonEmptyString(payload["turnKey"])
+      ?? NonEmptyString(payload["turn_key"])
+  }
+
+  private func ApplyRuntimeContextFields(
+    from payload: [String: Any],
+    to metadata: inout EndpointMetadata
+  ) {
+    metadata.turnKey = ExtractTurnKey(from: payload) ?? metadata.turnKey
+    metadata.scope = NonEmptyString(payload["scope"]) ?? metadata.scope
+    metadata.taskKind =
+      NonEmptyString(payload["taskKind"]) ?? NonEmptyString(payload["task_kind"])
+      ?? metadata.taskKind
+    metadata.sessionSource =
+      NonEmptyString(payload["sessionSource"]) ?? NonEmptyString(payload["session_source"])
+      ?? metadata.sessionSource
+    metadata.subAgentSource =
+      NonEmptyString(payload["subAgentSource"]) ?? NonEmptyString(payload["sub_agent_source"])
+      ?? metadata.subAgentSource
+    metadata.parentTurnId =
+      NonEmptyString(payload["parentTurnId"]) ?? NonEmptyString(payload["parent_turn_id"])
+      ?? metadata.parentTurnId
+    metadata.threadName =
+      NonEmptyString(payload["threadName"]) ?? NonEmptyString(payload["thread_name"])
+      ?? metadata.threadName
   }
 
   private func ExtractLatestCwd(from turn: [String: Any]) -> String? {

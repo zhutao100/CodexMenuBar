@@ -68,6 +68,77 @@ private struct RuntimeHistoryPage<Item> {
   }
 }
 
+private func IsDelegateTurn(
+  scope: String?,
+  sessionSource: String?,
+  subAgentSource: String?
+) -> Bool {
+  let normalizedScope = NormalizeIdentifier(scope)
+  let normalizedSessionSource = NormalizeIdentifier(sessionSource)
+  return normalizedScope == "delegate" || normalizedSessionSource.hasPrefix("subagent")
+    || NormalizeIdentifier(subAgentSource).isEmpty == false
+}
+
+private func RuntimeTurnKindLabel(
+  scope: String?,
+  taskKind: String?,
+  sessionSource: String?,
+  subAgentSource: String?
+) -> String {
+  if IsDelegateTurn(scope: scope, sessionSource: sessionSource, subAgentSource: subAgentSource) {
+    let normalizedTaskKind = NormalizeIdentifier(taskKind)
+    if normalizedTaskKind == "post_turn_completion_review" {
+      return "Post-turn review"
+    }
+    if NormalizeIdentifier(subAgentSource) == "review" {
+      return "Review delegate"
+    }
+    if !normalizedTaskKind.isEmpty {
+      return "\(HumanizeIdentifier(normalizedTaskKind)) delegate"
+    }
+    return "Delegate turn"
+  }
+  return "Regular turn"
+}
+
+private func RuntimeTurnKindNoun(
+  scope: String?,
+  taskKind: String?,
+  sessionSource: String?,
+  subAgentSource: String?
+) -> String {
+  let label = RuntimeTurnKindLabel(
+    scope: scope,
+    taskKind: taskKind,
+    sessionSource: sessionSource,
+    subAgentSource: subAgentSource
+  )
+  switch label {
+  case "Regular turn", "Delegate turn":
+    return label.lowercased()
+  default:
+    return label.lowercased()
+  }
+}
+
+private func NormalizeIdentifier(_ value: String?) -> String {
+  guard let value else {
+    return ""
+  }
+  return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    .replacingOccurrences(of: "-", with: "_")
+    .lowercased()
+}
+
+private func HumanizeIdentifier(_ value: String) -> String {
+  value.split(separator: "_")
+    .filter { !$0.isEmpty }
+    .map { part in
+      part.prefix(1).uppercased() + part.dropFirst()
+    }
+    .joined(separator: " ")
+}
+
 struct TurnMenuRowView: View {
   let endpointRow: EndpointRow
   let now: Date
@@ -100,6 +171,18 @@ struct TurnMenuRowView: View {
           Text(NameText())
             .font(.system(size: 12, weight: .semibold))
             .lineLimit(1)
+
+          Text(TurnKindLabel())
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(TurnKindForeground())
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+              TurnKindForeground().opacity(0.12),
+              in: Capsule(style: .continuous)
+            )
+            .lineLimit(1)
+            .accessibilityIdentifier("turn.kind.\(endpointRow.endpointId)")
 
           Spacer(minLength: 8)
 
@@ -180,6 +263,9 @@ struct TurnMenuRowView: View {
     .onChange(of: endpointRow.turnId ?? "") { _, _ in
       ResetHistorySelections()
     }
+    .onChange(of: endpointRow.turnKey ?? "") { _, _ in
+      ResetHistorySelections()
+    }
     .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isExpanded)
   }
 
@@ -216,6 +302,21 @@ struct TurnMenuRowView: View {
           .font(.system(size: 10, weight: .medium))
           .foregroundStyle(.secondary)
           .lineLimit(1)
+      }
+
+      if let turnDetails = TurnDetailsLine() {
+        SectionCard {
+          Label("Turn Details", systemImage: "info.circle.fill")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+        } content: {
+          Text(turnDetails)
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .lineLimit(3)
+            .textSelection(.enabled)
+            .accessibilityIdentifier("turn.details.\(endpointRow.endpointId)")
+        }
       }
 
       let tokenHistoryEntries = TokenUsageHistoryEntries()
@@ -384,7 +485,7 @@ struct TurnMenuRowView: View {
       if !endpointRow.recentRuns.isEmpty {
         let runPage = RunHistoryPage()
         AccordionSectionCard(
-          title: "Past Runs (\(endpointRow.recentRuns.count))",
+          title: "Completed Turns (\(endpointRow.recentRuns.count))",
           systemImage: "clock.arrow.circlepath",
           isExpanded: isPastRunsExpanded,
           onToggle: onTogglePastRuns
@@ -514,13 +615,14 @@ struct TurnMenuRowView: View {
     if !effectiveSamples.isEmpty {
       let turnId = activeTurn?.turnId ?? endpointRow.turnId ?? "latest"
       seenTurnIds.insert(TurnIdentity(threadId: endpointRow.threadId, turnId: turnId))
+      let titlePrefix = activeTurn == nil ? "Latest" : "Current"
 
       let newestFirstSamples = Array(effectiveSamples.enumerated().reversed())
       for (index, sample) in newestFirstSamples {
         entries.append(
           TokenUsageHistoryEntry(
             id: "latest:\(endpointRow.endpointId):\(turnId):\(index)",
-            title: activeTurn == nil ? "Latest turn" : "Current turn",
+            title: "\(titlePrefix) \(TurnKindNoun())",
             subtitle: TokenUsageHistoryPrimarySubtitle(
               sampleIndex: index,
               sampleCount: effectiveSamples.count,
@@ -533,10 +635,11 @@ struct TurnMenuRowView: View {
     } else if let usage = EffectiveLastTurnTokenUsage() {
       let turnId = activeTurn?.turnId ?? endpointRow.turnId ?? "latest"
       seenTurnIds.insert(TurnIdentity(threadId: endpointRow.threadId, turnId: turnId))
+      let titlePrefix = activeTurn == nil ? "Latest" : "Current"
       entries.append(
         TokenUsageHistoryEntry(
           id: "latest:\(endpointRow.endpointId):\(turnId)",
-          title: activeTurn == nil ? "Latest turn" : "Current turn",
+          title: "\(titlePrefix) \(TurnKindNoun())",
           subtitle: TokenUsageHistoryPrimarySubtitle(
             sampleIndex: nil,
             sampleCount: 0,
@@ -564,7 +667,9 @@ struct TurnMenuRowView: View {
         entries.append(
           TokenUsageHistoryEntry(
             id: "run:\(run.runKey):\(sampleIndex)",
-            title: index == 0 ? "Latest completed turn" : "Earlier turn",
+            title: index == 0
+              ? "Latest completed \(TurnKindNoun(run: run))"
+              : "Earlier \(TurnKindNoun(run: run))",
             subtitle: RunTokenUsageSubtitle(
               run: run,
               sampleIndex: sampleIndex,
@@ -680,6 +785,69 @@ struct TurnMenuRowView: View {
       return "Thinking: \(thinking)"
     }
     return nil
+  }
+
+  private func TurnKindLabel() -> String {
+    RuntimeTurnKindLabel(
+      scope: endpointRow.scope,
+      taskKind: endpointRow.taskKind,
+      sessionSource: endpointRow.sessionSource,
+      subAgentSource: endpointRow.subAgentSource
+    )
+  }
+
+  private func TurnKindNoun() -> String {
+    RuntimeTurnKindNoun(
+      scope: endpointRow.scope,
+      taskKind: endpointRow.taskKind,
+      sessionSource: endpointRow.sessionSource,
+      subAgentSource: endpointRow.subAgentSource
+    )
+  }
+
+  private func TurnKindNoun(run: CompletedRun) -> String {
+    RuntimeTurnKindNoun(
+      scope: run.scope,
+      taskKind: run.taskKind,
+      sessionSource: run.sessionSource,
+      subAgentSource: run.subAgentSource
+    )
+  }
+
+  private func TurnKindForeground() -> Color {
+    IsDelegateTurn(
+      scope: endpointRow.scope,
+      sessionSource: endpointRow.sessionSource,
+      subAgentSource: endpointRow.subAgentSource
+    ) ? .purple : Color(nsColor: .secondaryLabelColor)
+  }
+
+  private func TurnDetailsLine() -> String? {
+    var values = [TurnKindLabel()]
+    if let threadName = NonEmpty(endpointRow.threadName) {
+      values.append("Name: \(threadName)")
+    }
+    if let turnId = NonEmpty(endpointRow.turnId) {
+      values.append("Turn: \(turnId)")
+    }
+    if let threadId = NonEmpty(endpointRow.threadId) {
+      values.append("Thread: \(threadId)")
+    }
+    if let parentTurnId = NonEmpty(endpointRow.parentTurnId) {
+      values.append("Parent: \(parentTurnId)")
+    }
+    guard values.count > 1 || endpointRow.activeTurn != nil else {
+      return nil
+    }
+    return values.joined(separator: " · ")
+  }
+
+  private func NonEmpty(_ value: String?) -> String? {
+    guard let value else {
+      return nil
+    }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
   }
 
   private func ThinkingLabel(_ value: String?) -> String? {
@@ -1043,6 +1211,15 @@ private struct RunHistoryRowView: View {
             .foregroundStyle(.secondary)
             .lineLimit(2)
 
+          if let turnDetails = TurnDetailsLine() {
+            Text(turnDetails)
+              .font(.system(size: 10, design: .monospaced))
+              .foregroundStyle(.tertiary)
+              .lineLimit(3)
+              .textSelection(.enabled)
+              .accessibilityIdentifier("turn.completedRun.details.\(run.runKey)")
+          }
+
           TimelineBarView(segments: run.TimelineSegments())
             .frame(maxWidth: .infinity)
             .frame(height: 8)
@@ -1143,7 +1320,32 @@ private struct RunHistoryRowView: View {
 
   private func TitleText() -> String {
     let suffix = isLastRun ? " · latest" : ""
-    return "\(StatusText(run.status)) · \(run.ElapsedString()) · \(run.RanAtString())\(suffix)"
+    return
+      "\(RunKindLabel()) · \(StatusText(run.status)) · \(run.ElapsedString()) · \(run.RanAtString())\(suffix)"
+  }
+
+  private func RunKindLabel() -> String {
+    RuntimeTurnKindLabel(
+      scope: run.scope,
+      taskKind: run.taskKind,
+      sessionSource: run.sessionSource,
+      subAgentSource: run.subAgentSource
+    )
+  }
+
+  private func TurnDetailsLine() -> String? {
+    var values = [RunKindLabel()]
+    if let threadName = NonEmpty(run.threadName) {
+      values.append("Name: \(threadName)")
+    }
+    values.append("Turn: \(run.turnId)")
+    if let threadId = NonEmpty(run.threadId) {
+      values.append("Thread: \(threadId)")
+    }
+    if let parentTurnId = NonEmpty(run.parentTurnId) {
+      values.append("Parent: \(parentTurnId)")
+    }
+    return values.joined(separator: " · ")
   }
 
   private func FileHistoryPage() -> RuntimeHistoryPage<FileChangeSummary> {
