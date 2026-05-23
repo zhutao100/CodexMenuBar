@@ -204,7 +204,7 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     let details = app.descendants(matching: .any)["turn.details.fixture-endpoint"]
     XCTAssertTrue(details.waitForExistence(timeout: 5))
-    XCTAssertTrue(WaitForStringValueContaining(of: details, text: "Parent: regular-turn"))
+    XCTAssertTrue(WaitForStringValueContaining(of: details, text: "Reviewed turn: regular-turn"))
 
     let position = app.descendants(matching: .any)[
       "turn.tokenUsageHistory.position.fixture-endpoint"]

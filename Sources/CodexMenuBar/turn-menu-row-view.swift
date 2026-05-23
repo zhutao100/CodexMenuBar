@@ -121,6 +121,10 @@ private func RuntimeTurnKindNoun(
   }
 }
 
+private func ParentTurnDetailLabel(taskKind: String?) -> String {
+  NormalizeIdentifier(taskKind) == "post_turn_completion_review" ? "Reviewed turn" : "Parent"
+}
+
 private func NormalizeIdentifier(_ value: String?) -> String {
   guard let value else {
     return ""
@@ -648,6 +652,8 @@ struct TurnMenuRowView: View {
           usage: usage
         )
       )
+    } else if activeTurn != nil {
+      return entries
     }
 
     for (index, run) in endpointRow.recentRuns.enumerated() {
@@ -834,7 +840,7 @@ struct TurnMenuRowView: View {
       values.append("Thread: \(threadId)")
     }
     if let parentTurnId = NonEmpty(endpointRow.parentTurnId) {
-      values.append("Parent: \(parentTurnId)")
+      values.append("\(ParentTurnDetailLabel(taskKind: endpointRow.taskKind)): \(parentTurnId)")
     }
     guard values.count > 1 || endpointRow.activeTurn != nil else {
       return nil
@@ -1343,7 +1349,7 @@ private struct RunHistoryRowView: View {
       values.append("Thread: \(threadId)")
     }
     if let parentTurnId = NonEmpty(run.parentTurnId) {
-      values.append("Parent: \(parentTurnId)")
+      values.append("\(ParentTurnDetailLabel(taskKind: run.taskKind)): \(parentTurnId)")
     }
     return values.joined(separator: " · ")
   }
