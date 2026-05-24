@@ -41,14 +41,22 @@ final class TurnStore {
       return existing
     }
 
+    let requestedTurnKey = NonEmptyString(turnKey)
+    let requestedThreadId = NonEmptyString(threadId)
     let matchingKeys = turnsByKey.compactMap { key, turn -> String? in
       guard turn.endpointId == endpointId, turn.turnId == turnId else {
         return nil
       }
-      if let turnKey = NonEmptyString(turnKey), turn.turnKey == turnKey {
-        return key
+      if let requestedTurnKey {
+        if turn.turnKey == requestedTurnKey {
+          return key
+        }
+        if let requestedThreadId {
+          return turn.threadId == requestedThreadId ? key : nil
+        }
+        return nil
       }
-      if let threadId = NonEmptyString(threadId), turn.threadId == threadId {
+      if let requestedThreadId, turn.threadId == requestedThreadId {
         return key
       }
       return key
@@ -215,6 +223,11 @@ final class TurnStore {
       return archived
     }
     if CompletedRunAlreadyArchived(
+      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    {
+      return false
+    }
+    if HasConflictingActiveTurnIdentity(
       endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     {
       return false
@@ -902,6 +915,31 @@ final class TurnStore {
     completedRunsByEndpoint[endpointId]?.contains {
       RunMatchesTurn($0, turnKey: turnKey, threadId: threadId, turnId: turnId)
     } == true
+  }
+
+  private func HasConflictingActiveTurnIdentity(
+    endpointId: String,
+    turnKey: String?,
+    threadId: String?,
+    turnId: String
+  ) -> Bool {
+    guard let requestedTurnKey = NonEmptyString(turnKey) else {
+      return false
+    }
+
+    let requestedThreadId = NonEmptyString(threadId)
+    return turnsByKey.values.contains { turn in
+      guard turn.endpointId == endpointId, turn.turnId == turnId else {
+        return false
+      }
+      if turn.turnKey == requestedTurnKey {
+        return false
+      }
+      if let requestedThreadId, turn.threadId == requestedThreadId {
+        return false
+      }
+      return true
+    }
   }
 
   private func ExtractPromptPreview(from turn: [String: Any]) -> String? {

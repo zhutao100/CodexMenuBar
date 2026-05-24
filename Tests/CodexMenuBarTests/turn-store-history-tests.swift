@@ -922,6 +922,49 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].recentRuns.first?.taskKind, "post_turn_completion_review")
   }
 
+  func testStaleCompletionKeyDoesNotArchiveNewActiveRuntimeTurnId() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread-new",
+      turnId: "0",
+      turnKey: "delegate-thread-new:0",
+      at: start
+    )
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "delegate-thread-new",
+      turnId: "0",
+      turnKey: "delegate-thread-new:0",
+      turn: [
+        "scope": "delegate",
+        "taskKind": "post_turn_completion_review",
+        "sessionSource": "subagent_review",
+        "subAgentSource": "review",
+        "parentTurnId": "turn-2",
+      ],
+      at: start
+    )
+
+    let archived = store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: nil,
+      turnId: "0",
+      turnKey: "stale-delegate-thread:0",
+      status: .completed,
+      at: start.addingTimeInterval(1)
+    )
+
+    XCTAssertFalse(archived)
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].activeTurn?.turnId, "0")
+    XCTAssertEqual(rows[0].activeTurn?.turnKey, "delegate-thread-new:0")
+    XCTAssertEqual(rows[0].activeTurn?.status, .inProgress)
+    XCTAssertTrue(rows[0].recentRuns.isEmpty)
+  }
+
   func testPostTurnReviewCompletionsWithSameTurnIdAndDifferentThreadsAreDistinct() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)
