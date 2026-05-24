@@ -48,6 +48,7 @@ Expand CodexMenuBar from a compact active-turn popover into a richer native macO
 - Current publishers:
   - `app-server` publishes selected `ServerNotification` variants to `codexd`;
   - the TUI bridge publishes synthetic menu-bar notifications for CLI sessions;
+  - the TUI bridge starts delegate turns from runtime context activation/update events, forwards context/token updates keyed by `turnKey`, and completes delegate turns on runtime context deactivation;
   - runtime IDs are currently process-based (`pid:<pid>`), with `sessionSource` such as `appServer` or `cli`.
 
 ### Current Limitations For Rich UI
@@ -160,6 +161,7 @@ Track daemon-side work in `codex-rs/codexd/docs/dev_plans/menubar_status_hub_pre
 - Opening the Status Center switches the accessory menu bar app to regular activation so the persistent window has a Dock icon; closing the Status Center restores accessory mode.
 - Runtime detail panes expose token usage as a browsable per-turn history across current-turn rounds, latest reported usage, and recent completed runs. The round history excludes total-only context estimates because those are live context recomputations, not model-response rounds.
 - Runtime detail panes render transient turn IDs as meaningful status text. Post-turn review panes show the review target as the previous completed turn instead of exposing the session-local parent turn ID.
+- Post-turn review runtime panels resolve delegate token updates by `turnKey`, and de-dupe completion history when `runtimeUpsert` removes the active delegate before the forwarded `turn/completed` notification.
 - Runtime detail sections use disclosure cards consistently for prompt, details, token usage, session totals, errors, plan, files, commands, and completed turns.
 - Runtime detail panes page through longer plan, active-turn file, command, recent-run, and expanded-run histories with newest/older controls instead of truncating the only visible slice.
 - The UI remains read-only for daemon/runtime state; control actions are still gated on future runtime capabilities.
