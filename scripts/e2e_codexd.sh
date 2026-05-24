@@ -288,7 +288,7 @@ runtime_id = "rt-e2e"
 thread_id = "thread-e2e"
 turn_id = "turn-e2e"
 delegate_thread_id = "thread-e2e-review"
-delegate_turn_id = "post-turn-review-e2e"
+delegate_turn_id = "0"
 delegate_turn_key = f"{delegate_thread_id}:{delegate_turn_id}"
 
 send_line(prod, {

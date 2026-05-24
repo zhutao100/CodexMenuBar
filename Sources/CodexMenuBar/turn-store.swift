@@ -968,7 +968,7 @@ final class TurnStore {
       if let threadId = NonEmptyString(threadId), let runThreadId = NonEmptyString(run.threadId) {
         return threadId == runThreadId
       }
-      return IsPostTurnReviewRun(run) && IsPostTurnReviewTurnId(turnId)
+      return IsPostTurnReviewRun(run)
     }
     if let threadId = NonEmptyString(threadId), let runThreadId = run.threadId {
       return threadId == runThreadId

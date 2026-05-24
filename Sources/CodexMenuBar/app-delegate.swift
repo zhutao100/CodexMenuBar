@@ -802,7 +802,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let endpointId = "fixture-endpoint"
     let mainThreadId = "fixture-main-thread"
     let delegateThreadId = "fixture-delegate-thread"
-    let delegateTurnId = "post-turn-review-0"
+    let delegateTurnId = "0"
     let delegateTurnKey = "\(delegateThreadId):\(delegateTurnId)"
     let now = Date()
     let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
