@@ -502,6 +502,68 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].tokenUsageSamples.map(\.usage), [delegateUsage])
   }
 
+  func testTurnKeyOnlyTokenUsageRefreshesActivePostTurnReview() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let turnKey = "delegate-thread:post-turn-review-0"
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      at: start
+    )
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      turn: [
+        "scope": "delegate",
+        "taskKind": "post_turn_completion_review",
+        "sessionSource": "subagent_review",
+        "subAgentSource": "review",
+        "parentTurnId": "turn-1",
+      ],
+      at: start
+    )
+
+    var delegateUsage = TokenUsageInfo()
+    delegateUsage.totalTokens = 3_920
+    delegateUsage.inputTokens = 3_400
+    delegateUsage.cachedInputTokens = 1_300
+    delegateUsage.outputTokens = 520
+    delegateUsage.reasoningTokens = 180
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: nil,
+      turnKey: turnKey,
+      tokenUsageTotal: nil,
+      tokenUsageLast: delegateUsage,
+      observedAt: start.addingTimeInterval(1)
+    )
+
+    var rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].activeTurn?.turnId, "post-turn-review-0")
+    XCTAssertEqual(rows[0].turnKey, turnKey)
+    XCTAssertEqual(rows[0].tokenUsageLast, delegateUsage)
+    XCTAssertEqual(rows[0].tokenUsageSamples.map(\.usage), [delegateUsage])
+
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      status: .completed,
+      at: start.addingTimeInterval(2)
+    )
+    rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].recentRuns.first?.tokenUsage, delegateUsage)
+    XCTAssertEqual(rows[0].recentRuns.first?.tokenUsageSamples.map(\.usage), [delegateUsage])
+  }
+
   func testRegularTurnAfterDelegateDoesNotInheritDelegateMetadata() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)
@@ -624,6 +686,81 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].recentRuns.first?.scope, "delegate")
     XCTAssertEqual(rows[0].recentRuns.first?.taskKind, "post_turn_completion_review")
     XCTAssertEqual(rows[0].recentRuns.first?.turnKey, turnKey)
+  }
+
+  func testDelegateCompletionIsDedupedAfterRuntimeUpsertReconciliation() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let turnKey = "delegate-thread:post-turn-review-0"
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      at: start
+    )
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      turn: [
+        "scope": "delegate",
+        "taskKind": "post_turn_completion_review",
+        "sessionSource": "subagent_review",
+        "subAgentSource": "review",
+        "parentTurnId": "turn-1",
+        "threadName": "Post-turn review",
+        "model": "gpt-5-review",
+      ],
+      at: start
+    )
+
+    var usage = TokenUsageInfo()
+    usage.totalTokens = 3_920
+    usage.inputTokens = 3_400
+    usage.outputTokens = 520
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      tokenUsageTotal: nil,
+      tokenUsageLast: usage,
+      observedAt: start.addingTimeInterval(1)
+    )
+
+    store.ReconcileSnapshotActiveTurns(
+      endpointId: "ep-1",
+      activeTurnKeys: [],
+      at: start.addingTimeInterval(2)
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      status: .completed,
+      at: start.addingTimeInterval(3)
+    )
+    store.Tick(now: start.addingTimeInterval(14))
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: nil,
+      turnId: "post-turn-review-0",
+      turnKey: "stale-\(turnKey)",
+      status: .completed,
+      at: start.addingTimeInterval(15)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].recentRuns.map(\.turnId), ["post-turn-review-0"])
+    XCTAssertEqual(rows[0].recentRuns.first?.threadId, "delegate-thread")
+    XCTAssertEqual(rows[0].recentRuns.first?.turnKey, turnKey)
+    XCTAssertEqual(rows[0].recentRuns.first?.threadName, "Post-turn review")
+    XCTAssertEqual(rows[0].recentRuns.first?.model, "gpt-5-review")
+    XCTAssertEqual(rows[0].recentRuns.first?.tokenUsage, usage)
   }
 
   func testDelegateCompletionIsDedupedWhenCompletionSourcesUseDifferentTurnKeys() {

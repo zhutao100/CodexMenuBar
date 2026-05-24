@@ -912,7 +912,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           "modelProvider": "OpenAI",
           "thinkingLevel": "high",
           "cwd": cwd,
-          "tokenUsage": tokenUsage,
         ]
       )
       self.HandleNotification(
@@ -920,7 +919,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         params: [
           "endpointId": endpointId,
           "threadId": delegateThreadId,
-          "turnId": delegateTurnId,
           "turnKey": delegateTurnKey,
           "tokenUsage": tokenUsage,
         ]
@@ -934,6 +932,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return
       }
       let completedAt = Date()
+      self.HandleNotification(
+        method: "thread/snapshotSummary",
+        params: [
+          "endpointId": endpointId,
+          "activeTurnKeys": [],
+        ]
+      )
       self.HandleNotification(
         method: "turn/completed",
         params: [
@@ -1246,10 +1251,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func HandleTurnContextUpdated(params: [String: Any]) {
     let endpointId = params["endpointId"] as? String ?? "unknown"
-    guard let turnId = StringValue(params["turnId"]) ?? StringValue(params["turn_id"]) else {
+    let turnKey = ResolveTurnKey(params: params)
+    let paramsThreadId = StringValue(params["threadId"]) ?? StringValue(params["thread_id"])
+    guard
+      let turnId = StringValue(params["turnId"]) ?? StringValue(params["turn_id"])
+        ?? turnStore.ResolveKnownTurnId(
+          endpointId: endpointId,
+          turnKey: turnKey,
+          threadId: paramsThreadId
+        )
+    else {
       return
     }
-    let turnKey = ResolveTurnKey(params: params)
     let threadId = ResolveThreadId(
       params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
 

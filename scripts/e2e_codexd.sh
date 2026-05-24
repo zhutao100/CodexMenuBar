@@ -452,7 +452,6 @@ send_line(prod, {
       "method": "thread/tokenUsage/updated",
       "params": {
         "threadId": delegate_thread_id,
-        "turnId": delegate_turn_id,
         "turnKey": delegate_turn_key,
         "tokenUsage": {
           "modelContextWindow": 128000,
@@ -559,6 +558,7 @@ upserts = []
 state_upsert_seen = False
 delegate_upsert_seen = False
 delegate_token_upsert_seen = False
+delegate_token_key_only_notification_seen = False
 delegate_completion_seen = False
 stale_duplicate_delegate_completion_seen = False
 notifs = []
@@ -614,6 +614,14 @@ for e in codexd_events:
         and turn.get("key") == f"stale-{delegate_turn_key}"
       ):
         stale_duplicate_delegate_completion_seen = True
+    if notification.get("method") == "thread/tokenUsage/updated":
+      notification_params = notification.get("params") or {}
+      if (
+        notification_params.get("threadId") == delegate_thread_id
+        and "turnId" not in notification_params
+        and notification_params.get("turnKey") == delegate_turn_key
+      ):
+        delegate_token_key_only_notification_seen = True
     notifs.append(e)
 
 if not upserts:
@@ -624,6 +632,8 @@ if not delegate_upsert_seen:
   fail("expected delegate active turn summary with turnKey in runtimeUpsert events")
 if not delegate_token_upsert_seen:
   fail("expected delegate token usage to update the keyed active turn")
+if not delegate_token_key_only_notification_seen:
+  fail("expected delegate token usage notification to be keyed by turnKey without turnId")
 if not notifs:
   fail(f"expected runtimeNotification in {len(codexd_events)} events")
 if "turn/started" not in notif_methods:

@@ -455,8 +455,11 @@ final class TurnStore {
     observedAt: Date = Date()
   ) {
     var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
-    if let turnId {
-      ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    let resolvedTurnId =
+      turnId
+      ?? ResolveKnownTurnId(endpointId: endpointId, turnKey: turnKey, threadId: threadId)
+    if let resolvedTurnId {
+      ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: resolvedTurnId)
     } else if let threadId {
       metadata.threadId = threadId
     }
@@ -467,7 +470,7 @@ final class TurnStore {
       metadata.tokenUsageLast = tokenUsageLast
     }
 
-    guard let turnId else {
+    guard let resolvedTurnId else {
       metadataByEndpoint[endpointId] = metadata
       return
     }
@@ -476,7 +479,7 @@ final class TurnStore {
     if let runTokenUsage {
       AppendTokenUsageRoundSample(runTokenUsage, at: observedAt, to: &metadata.tokenUsageSamples)
       let key = ResolveLocalTurnKey(
-        endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+        endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: resolvedTurnId)
       turnsByKey[key]?.UpdateTokenUsage(
         total: tokenUsageTotal, last: tokenUsageLast, at: observedAt)
     }
@@ -488,7 +491,7 @@ final class TurnStore {
 
     guard
       let index = runs.firstIndex(where: { run in
-        RunMatchesTurn(run, turnKey: turnKey, threadId: threadId, turnId: turnId)
+        RunMatchesTurn(run, turnKey: turnKey, threadId: threadId, turnId: resolvedTurnId)
       })
     else {
       return
@@ -649,6 +652,47 @@ final class TurnStore {
       return nil
     }
     return matchingTurns.first?.threadId
+  }
+
+  func ResolveKnownTurnId(endpointId: String, turnKey: String?, threadId: String?) -> String? {
+    if let turnKey = NonEmptyString(turnKey),
+      let directTurn = turnsByKey["\(endpointId):\(turnKey)"]
+    {
+      return directTurn.turnId
+    }
+
+    let activeMatches = Set(
+      turnsByKey.values.compactMap { turn -> String? in
+        guard turn.endpointId == endpointId else {
+          return nil
+        }
+        if let turnKey = NonEmptyString(turnKey) {
+          return turn.turnKey == turnKey ? turn.turnId : nil
+        }
+        if let threadId = NonEmptyString(threadId) {
+          return turn.threadId == threadId ? turn.turnId : nil
+        }
+        return nil
+      })
+    if activeMatches.count == 1 {
+      return activeMatches.first
+    }
+
+    let completedMatches =
+      Set(
+        completedRunsByEndpoint[endpointId]?.compactMap { run -> String? in
+          if let turnKey = NonEmptyString(turnKey) {
+            return run.turnKey == turnKey ? run.turnId : nil
+          }
+          if let threadId = NonEmptyString(threadId) {
+            return run.threadId == threadId ? run.turnId : nil
+          }
+          return nil
+        } ?? [])
+    if completedMatches.count == 1 {
+      return completedMatches.first
+    }
+    return nil
   }
 
   func Tick(now: Date) {
