@@ -398,6 +398,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
 
+    if fixture.caseInsensitiveCompare("completed-turn-history") == .orderedSame {
+      ApplyCompletedTurnHistoryUITestFixture()
+      return
+    }
+
     guard fixture.caseInsensitiveCompare("active-turn") == .orderedSame else {
       return
     }
@@ -453,6 +458,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         totalTokens: 20_850,
         contextWindow: 128_000
       ),
+      tokenUsageSamples: [
+        TokenUsageInfo(
+          inputTokens: 11_400,
+          cachedInputTokens: 4_600,
+          outputTokens: 1_480,
+          reasoningTokens: 560,
+          totalTokens: 12_880,
+          contextWindow: 128_000
+        ),
+        TokenUsageInfo(
+          inputTokens: 18_200,
+          cachedInputTokens: 7_100,
+          outputTokens: 2_650,
+          reasoningTokens: 1_100,
+          totalTokens: 20_850,
+          contextWindow: 128_000
+        ),
+      ],
       command: "./scripts/ui/ui_loop.sh --scheme CodexMenuBarUI --destination platform=macOS",
       changedPath: "Sources/CodexMenuBar/status-window-controller.swift"
     )
@@ -668,6 +691,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         at: startedAt.addingTimeInterval(160 + Double(index))
       )
     }
+    model.SyncSectionDisclosureState()
+    model.InvalidateView()
+  }
+
+  private func ApplyCompletedTurnHistoryUITestFixture() {
+    let endpointId = "fixture-endpoint"
+    let threadId = "fixture-thread"
+    let now = Date()
+    let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
+
+    settingsModel.connectionState = .connected
+    model.connectionState = .connected
+    model.codexdDiagnostics = CodexdDiagnostics(
+      resolvedSocketPath: "/tmp/codexd-fixture.sock",
+      connectedAt: now,
+      protocolVersion: 1,
+      capabilities: ["eventReplay", "runtimeState"],
+      lastEventSeq: 256
+    )
+    model.SetEndpointIds([endpointId])
+    turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
+    SeedCompletedUITestTurn(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: "completed-history-turn",
+      prompt: "Exercise completed-turn token usage history controls.",
+      startedAt: now.addingTimeInterval(-900),
+      endedAt: now.addingTimeInterval(-720),
+      tokenUsage: TokenUsageInfo(
+        inputTokens: 15_600,
+        cachedInputTokens: 5_900,
+        outputTokens: 2_400,
+        reasoningTokens: 870,
+        totalTokens: 18_000,
+        contextWindow: 128_000
+      ),
+      tokenUsageSamples: [
+        TokenUsageInfo(
+          inputTokens: 7_200,
+          cachedInputTokens: 2_600,
+          outputTokens: 900,
+          reasoningTokens: 240,
+          totalTokens: 8_100,
+          contextWindow: 128_000
+        ),
+        TokenUsageInfo(
+          inputTokens: 11_300,
+          cachedInputTokens: 4_100,
+          outputTokens: 1_640,
+          reasoningTokens: 520,
+          totalTokens: 12_940,
+          contextWindow: 128_000
+        ),
+        TokenUsageInfo(
+          inputTokens: 15_600,
+          cachedInputTokens: 5_900,
+          outputTokens: 2_400,
+          reasoningTokens: 870,
+          totalTokens: 18_000,
+          contextWindow: 128_000
+        ),
+      ],
+      command: "./scripts/verify_fast.sh",
+      changedPath: "Sources/CodexMenuBar/turn-menu-row-view.swift"
+    )
     model.SyncSectionDisclosureState()
     model.InvalidateView()
   }
@@ -990,6 +1078,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     startedAt: Date,
     endedAt: Date,
     tokenUsage: TokenUsageInfo,
+    tokenUsageSamples: [TokenUsageInfo]? = nil,
+    threadUsageTotal: TokenUsageInfo? = nil,
     command: String,
     changedPath: String
   ) {
@@ -1045,13 +1135,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       turnId: turnId,
       change: FileChangeSummary(path: changedPath, kind: .update)
     )
-    turnStore.UpdateTokenUsage(
-      endpointId: endpointId,
-      threadId: threadId,
-      turnId: turnId,
-      tokenUsageTotal: nil,
-      tokenUsageLast: tokenUsage
-    )
+    let samples = tokenUsageSamples ?? [tokenUsage]
+    for (index, sample) in samples.enumerated() {
+      turnStore.UpdateTokenUsage(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        tokenUsageTotal: index == samples.count - 1 ? threadUsageTotal ?? tokenUsage : nil,
+        tokenUsageLast: sample,
+        observedAt: startedAt.addingTimeInterval(60 + Double(index * 12))
+      )
+    }
     turnStore.MarkTurnCompleted(
       endpointId: endpointId,
       threadId: threadId,

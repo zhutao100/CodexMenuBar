@@ -155,6 +155,83 @@ final class TurnStore {
     return true
   }
 
+  private func ThreadIdFromTurnKey(_ turnKey: String?) -> String? {
+    guard let turnKey = NonEmptyString(turnKey),
+      let separator = turnKey.lastIndex(of: ":"),
+      separator > turnKey.startIndex
+    else {
+      return nil
+    }
+    return String(turnKey[..<separator])
+  }
+
+  private func SessionThreadUsageKey(
+    threadId: String?,
+    turnKey: String?,
+    turnId: String?
+  ) -> String? {
+    if let threadId = NonEmptyString(threadId) ?? ThreadIdFromTurnKey(turnKey) {
+      return "thread:\(threadId)"
+    }
+    if let turnKey = NonEmptyString(turnKey) {
+      return "turnKey:\(turnKey)"
+    }
+    if let turnId = NonEmptyString(turnId) {
+      return "turn:\(turnId)"
+    }
+    return nil
+  }
+
+  private func RecordSessionTokenUsage(
+    _ usage: TokenUsageInfo,
+    in metadata: inout EndpointMetadata,
+    threadId: String?,
+    turnKey: String?,
+    turnId: String?,
+    observedAt: Date
+  ) {
+    guard usage.totalTokens > 0,
+      let key = SessionThreadUsageKey(threadId: threadId, turnKey: turnKey, turnId: turnId)
+    else {
+      return
+    }
+
+    metadata.sessionTokenUsageByThread[key] = TokenUsageSample(usage: usage, observedAt: observedAt)
+
+    if key.hasPrefix("thread:") {
+      if let turnKey = NonEmptyString(turnKey) {
+        metadata.sessionTokenUsageByThread.removeValue(forKey: "turnKey:\(turnKey)")
+      }
+      if let turnId = NonEmptyString(turnId) {
+        metadata.sessionTokenUsageByThread.removeValue(forKey: "turn:\(turnId)")
+      }
+    }
+  }
+
+  private func SessionTokenUsage(from metadata: EndpointMetadata?) -> SessionTokenUsageSummary? {
+    guard let metadata else {
+      return nil
+    }
+
+    var usage = TokenUsageInfo()
+    for sample in metadata.sessionTokenUsageByThread.values {
+      usage.inputTokens += sample.usage.inputTokens
+      usage.cachedInputTokens += sample.usage.cachedInputTokens
+      usage.outputTokens += sample.usage.outputTokens
+      usage.reasoningTokens += sample.usage.reasoningTokens
+      usage.totalTokens += sample.usage.totalTokens
+    }
+
+    guard usage.totalTokens > 0 else {
+      return nil
+    }
+
+    return SessionTokenUsageSummary(
+      usage: usage,
+      threadCount: metadata.sessionTokenUsageByThread.count
+    )
+  }
+
   func UpdateRuntimeMetadata(endpointId: String, cwd: String?, sessionSource: String?) {
     var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
     if let cwd { metadata.cwd = cwd }
@@ -471,13 +548,28 @@ final class TurnStore {
     let resolvedTurnId =
       turnId
       ?? ResolveKnownTurnId(endpointId: endpointId, turnKey: turnKey, threadId: threadId)
+    let resolvedThreadId =
+      NonEmptyString(threadId)
+      ?? resolvedTurnId.flatMap {
+        ResolveThreadId(endpointId: endpointId, turnId: $0, turnKey: turnKey)
+      }
+      ?? ThreadIdFromTurnKey(turnKey)
     if let resolvedTurnId {
-      ApplyTurnIdentity(to: &metadata, turnKey: turnKey, threadId: threadId, turnId: resolvedTurnId)
-    } else if let threadId {
-      metadata.threadId = threadId
+      ApplyTurnIdentity(
+        to: &metadata, turnKey: turnKey, threadId: resolvedThreadId, turnId: resolvedTurnId)
+    } else if let resolvedThreadId {
+      metadata.threadId = resolvedThreadId
     }
     if let tokenUsageTotal {
       metadata.tokenUsageTotal = tokenUsageTotal
+      RecordSessionTokenUsage(
+        tokenUsageTotal,
+        in: &metadata,
+        threadId: resolvedThreadId,
+        turnKey: turnKey,
+        turnId: resolvedTurnId ?? turnId,
+        observedAt: observedAt
+      )
     }
     if let tokenUsageLast {
       metadata.tokenUsageLast = tokenUsageLast
@@ -492,7 +584,9 @@ final class TurnStore {
     if let runTokenUsage {
       AppendTokenUsageRoundSample(runTokenUsage, at: observedAt, to: &metadata.tokenUsageSamples)
       let key = ResolveLocalTurnKey(
-        endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: resolvedTurnId)
+        endpointId: endpointId, turnKey: turnKey, threadId: resolvedThreadId, turnId: resolvedTurnId
+      )
+      turnsByKey[key]?.UpdateThreadId(resolvedThreadId)
       turnsByKey[key]?.UpdateTokenUsage(
         total: tokenUsageTotal, last: tokenUsageLast, at: observedAt)
     }
@@ -504,7 +598,7 @@ final class TurnStore {
 
     guard
       let index = runs.firstIndex(where: { run in
-        RunMatchesTurn(run, turnKey: turnKey, threadId: threadId, turnId: resolvedTurnId)
+        RunMatchesTurn(run, turnKey: turnKey, threadId: resolvedThreadId, turnId: resolvedTurnId)
       })
     else {
       return
@@ -825,6 +919,7 @@ final class TurnStore {
         tokenUsageTotal: tokenUsageTotal,
         tokenUsageLast: tokenUsageLast,
         tokenUsageSamples: tokenUsageSamples,
+        sessionTokenUsage: SessionTokenUsage(from: metadata),
         latestError: metadata?.latestError,
         fileChanges: activeTurn?.fileChanges ?? [],
         commands: activeTurn?.commands ?? [],

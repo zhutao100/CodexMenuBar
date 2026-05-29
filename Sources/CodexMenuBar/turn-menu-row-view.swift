@@ -169,6 +169,7 @@ struct TurnMenuRowView: View {
   @State private var isPromptSectionExpanded = true
   @State private var isDetailsSectionExpanded = true
   @State private var isTokenUsageSectionExpanded = true
+  @State private var isThreadTokenSectionExpanded = true
   @State private var isSessionTokenSectionExpanded = true
   @State private var isErrorSectionExpanded = true
   @State private var isPlanSectionExpanded = true
@@ -345,23 +346,59 @@ struct TurnMenuRowView: View {
         )
       }
 
-      if let usage = SessionTokenUsage() {
+      if let usage = ThreadTokenUsage() {
         AccordionSectionCard(
-          title: SessionTokenTitle(usage: usage),
+          title: ThreadTokenTitle(usage: usage),
           systemImage: "chart.pie.fill",
-          accessibilityIdentifier: "turn.sessionTokenSection.\(endpointRow.endpointId)",
-          isExpanded: isSessionTokenSectionExpanded,
-          onToggle: { isSessionTokenSectionExpanded.toggle() }
+          accessibilityIdentifier: "turn.threadTokenSection.\(endpointRow.endpointId)",
+          isExpanded: isThreadTokenSectionExpanded,
+          onToggle: { isThreadTokenSectionExpanded.toggle() }
         ) {
           VStack(alignment: .leading, spacing: 4) {
             TokenUsageBarView(usage: usage)
               .frame(maxWidth: .infinity)
               .frame(height: 12)
 
+            Text(ThreadTokenUsageSubtitle())
+              .font(.system(size: 9))
+              .foregroundStyle(.tertiary)
+              .lineLimit(1)
+              .accessibilityIdentifier("turn.threadTokenUsage.subtitle.\(endpointRow.endpointId)")
+
             Text(TokenUsageDetailText(usage))
               .font(.system(size: 10, design: .monospaced))
               .foregroundStyle(.tertiary)
               .lineLimit(1)
+              .accessibilityIdentifier("turn.threadTokenUsage.detail.\(endpointRow.endpointId)")
+          }
+        }
+      }
+
+      if let summary = SessionTokenUsage() {
+        AccordionSectionCard(
+          title: SessionTokenTitle(summary: summary),
+          systemImage: "chart.pie.fill",
+          accessibilityIdentifier: "turn.sessionTokenSection.\(endpointRow.endpointId)",
+          isExpanded: isSessionTokenSectionExpanded,
+          onToggle: { isSessionTokenSectionExpanded.toggle() }
+        ) {
+          let usage = summary.usage
+          VStack(alignment: .leading, spacing: 4) {
+            TokenUsageBarView(usage: usage)
+              .frame(maxWidth: .infinity)
+              .frame(height: 12)
+
+            Text(SessionTokenUsageSubtitle(summary: summary))
+              .font(.system(size: 9))
+              .foregroundStyle(.tertiary)
+              .lineLimit(1)
+              .accessibilityIdentifier("turn.sessionTokenUsage.subtitle.\(endpointRow.endpointId)")
+
+            Text(TokenUsageDetailText(usage))
+              .font(.system(size: 10, design: .monospaced))
+              .foregroundStyle(.tertiary)
+              .lineLimit(1)
+              .accessibilityIdentifier("turn.sessionTokenUsage.detail.\(endpointRow.endpointId)")
           }
         }
       }
@@ -624,9 +661,13 @@ struct TurnMenuRowView: View {
     return [TokenUsageSample(usage: usage, observedAt: endpointRow.lastEventAt ?? now)]
   }
 
-  private func SessionTokenUsage() -> TokenUsageInfo? {
+  private func ThreadTokenUsage() -> TokenUsageInfo? {
     guard let usage = endpointRow.tokenUsageTotal, usage.totalTokens > 0 else { return nil }
     return usage
+  }
+
+  private func SessionTokenUsage() -> SessionTokenUsageSummary? {
+    endpointRow.sessionTokenUsage
   }
 
   private func TokenUsageHistoryEntries() -> [TokenUsageHistoryEntry] {
@@ -891,8 +932,24 @@ struct TurnMenuRowView: View {
     return trimmed.replacingOccurrences(of: "_", with: "-")
   }
 
-  private func SessionTokenTitle(usage: TokenUsageInfo) -> String {
-    "Session Token Usage - \(FormatTokenCount(usage.totalTokens))"
+  private func ThreadTokenTitle(usage: TokenUsageInfo) -> String {
+    "Thread Token Usage - \(FormatTokenCount(usage.totalTokens))"
+  }
+
+  private func ThreadTokenUsageSubtitle() -> String {
+    if let threadId = NonEmpty(endpointRow.threadId) {
+      return "Current thread total · \(threadId)"
+    }
+    return "Current thread total"
+  }
+
+  private func SessionTokenTitle(summary: SessionTokenUsageSummary) -> String {
+    "Session Token Usage - \(FormatTokenCount(summary.usage.totalTokens))"
+  }
+
+  private func SessionTokenUsageSubtitle(summary: SessionTokenUsageSummary) -> String {
+    let threadLabel = summary.threadCount == 1 ? "1 thread" : "\(summary.threadCount) threads"
+    return "All tracked threads in this runtime session · \(threadLabel)"
   }
 
   private func PlanTitle() -> String {
@@ -994,6 +1051,7 @@ struct TurnMenuRowView: View {
     isPromptSectionExpanded = true
     isDetailsSectionExpanded = true
     isTokenUsageSectionExpanded = true
+    isThreadTokenSectionExpanded = true
     isSessionTokenSectionExpanded = true
     isErrorSectionExpanded = true
     isPlanSectionExpanded = true
@@ -1072,13 +1130,37 @@ private struct TokenUsageHistoryCard: View {
   @Binding var selectedIndex: Int
   let isExpanded: Bool
   let onToggle: () -> Void
+  let sectionTitle: String
+  let sectionAccessibilityIdentifier: String
+  let historyAccessibilityPrefix: String
+
+  init(
+    endpointId: String,
+    entries: [TokenUsageHistoryEntry],
+    selectedIndex: Binding<Int>,
+    isExpanded: Bool,
+    onToggle: @escaping () -> Void,
+    sectionTitle: String = "Turn Token Usage",
+    sectionAccessibilityIdentifier: String? = nil,
+    historyAccessibilityPrefix: String = "turn.tokenUsageHistory"
+  ) {
+    self.endpointId = endpointId
+    self.entries = entries
+    self._selectedIndex = selectedIndex
+    self.isExpanded = isExpanded
+    self.onToggle = onToggle
+    self.sectionTitle = sectionTitle
+    self.sectionAccessibilityIdentifier =
+      sectionAccessibilityIdentifier ?? "turn.tokenUsageSection.\(endpointId)"
+    self.historyAccessibilityPrefix = historyAccessibilityPrefix
+  }
 
   var body: some View {
     if let entry = SelectedEntry {
       AccordionSectionCard(
-        title: "Turn Token Usage",
+        title: sectionTitle,
         systemImage: "chart.bar.fill",
-        accessibilityIdentifier: "turn.tokenUsageSection.\(endpointId)",
+        accessibilityIdentifier: sectionAccessibilityIdentifier,
         isExpanded: isExpanded,
         onToggle: onToggle
       ) {
@@ -1089,7 +1171,7 @@ private struct TokenUsageHistoryCard: View {
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .accessibilityLabel("\(ClampedSelectedIndex + 1) of \(entries.count)")
-                .accessibilityIdentifier("turn.tokenUsageHistory.position.\(endpointId)")
+                .accessibilityIdentifier("\(historyAccessibilityPrefix).position.\(endpointId)")
 
               Spacer(minLength: 4)
 
@@ -1101,7 +1183,7 @@ private struct TokenUsageHistoryCard: View {
               .disabled(ClampedSelectedIndex == 0)
               .help("Back to latest turn token usage")
               .accessibilityLabel("Back to latest turn token usage")
-              .accessibilityIdentifier("turn.tokenUsageHistory.latest.\(endpointId)")
+              .accessibilityIdentifier("\(historyAccessibilityPrefix).latest.\(endpointId)")
 
               Button(action: ShowNewerEntry) {
                 Image(systemName: "chevron.left")
@@ -1111,7 +1193,7 @@ private struct TokenUsageHistoryCard: View {
               .disabled(ClampedSelectedIndex == 0)
               .help("Show newer turn token usage")
               .accessibilityLabel("Show newer turn token usage")
-              .accessibilityIdentifier("turn.tokenUsageHistory.newer.\(endpointId)")
+              .accessibilityIdentifier("\(historyAccessibilityPrefix).newer.\(endpointId)")
 
               Button(action: ShowEarlierEntry) {
                 Image(systemName: "chevron.right")
@@ -1121,7 +1203,7 @@ private struct TokenUsageHistoryCard: View {
               .disabled(ClampedSelectedIndex >= entries.count - 1)
               .help("Show earlier turn token usage")
               .accessibilityLabel("Show earlier turn token usage")
-              .accessibilityIdentifier("turn.tokenUsageHistory.earlier.\(endpointId)")
+              .accessibilityIdentifier("\(historyAccessibilityPrefix).earlier.\(endpointId)")
             }
           }
 
@@ -1130,7 +1212,7 @@ private struct TokenUsageHistoryCard: View {
               .font(.system(size: 10, weight: .medium))
               .foregroundStyle(.secondary)
               .lineLimit(1)
-              .accessibilityIdentifier("turn.tokenUsageHistory.title.\(endpointId)")
+              .accessibilityIdentifier("\(historyAccessibilityPrefix).title.\(endpointId)")
 
             Spacer(minLength: 4)
 
@@ -1144,7 +1226,7 @@ private struct TokenUsageHistoryCard: View {
             .font(.system(size: 9))
             .foregroundStyle(.tertiary)
             .lineLimit(1)
-            .accessibilityIdentifier("turn.tokenUsageHistory.subtitle.\(endpointId)")
+            .accessibilityIdentifier("\(historyAccessibilityPrefix).subtitle.\(endpointId)")
 
           TokenUsageBarView(usage: entry.usage)
             .frame(maxWidth: .infinity)
@@ -1154,7 +1236,7 @@ private struct TokenUsageHistoryCard: View {
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(.tertiary)
             .lineLimit(1)
-            .accessibilityIdentifier("turn.tokenUsageHistory.detail.\(endpointId)")
+            .accessibilityIdentifier("\(historyAccessibilityPrefix).detail.\(endpointId)")
         }
       }
       .onAppear(perform: ClampSelection)
@@ -1206,6 +1288,8 @@ private struct RunHistoryRowView: View {
 
   @State private var fileHistoryPage = 0
   @State private var commandHistoryPage = 0
+  @State private var selectedTokenHistoryIndex = 0
+  @State private var isTokenUsageExpanded = true
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
@@ -1325,15 +1409,18 @@ private struct RunHistoryRowView: View {
             }
           }
 
-          if let usage = run.tokenUsage, usage.totalTokens > 0 {
-            TokenUsageBarView(usage: usage)
-              .frame(maxWidth: .infinity)
-              .frame(height: 10)
-
-            Text(TokenUsageDetailText(usage))
-              .font(.system(size: 10, design: .monospaced))
-              .foregroundStyle(.tertiary)
-              .lineLimit(1)
+          let tokenEntries = TokenUsageHistoryEntries()
+          if !tokenEntries.isEmpty {
+            TokenUsageHistoryCard(
+              endpointId: run.runKey,
+              entries: tokenEntries,
+              selectedIndex: $selectedTokenHistoryIndex,
+              isExpanded: isTokenUsageExpanded,
+              onToggle: { isTokenUsageExpanded.toggle() },
+              sectionTitle: "Turn Token Usage",
+              sectionAccessibilityIdentifier: "turn.completedRun.tokenUsageSection.\(run.runKey)",
+              historyAccessibilityPrefix: "turn.completedRun.tokenUsageHistory"
+            )
           }
         }
       }
@@ -1358,6 +1445,8 @@ private struct RunHistoryRowView: View {
     .onChange(of: run.runKey) { _, _ in
       fileHistoryPage = 0
       commandHistoryPage = 0
+      selectedTokenHistoryIndex = 0
+      isTokenUsageExpanded = true
     }
   }
 
@@ -1388,6 +1477,59 @@ private struct RunHistoryRowView: View {
       values.append(ParentTurnDetailText(taskKind: run.taskKind))
     }
     return values.joined(separator: " · ")
+  }
+
+  private func TokenUsageHistoryEntries() -> [TokenUsageHistoryEntry] {
+    let samples = TokenUsageSamples()
+    guard !samples.isEmpty else {
+      return []
+    }
+
+    return Array(samples.enumerated().reversed()).map { sampleIndex, sample in
+      TokenUsageHistoryEntry(
+        id: "completed-run:\(run.runKey):\(sampleIndex)",
+        title: "Completed \(RunKindNoun())",
+        subtitle: TokenUsageSubtitle(
+          sampleIndex: sampleIndex,
+          sampleCount: samples.count,
+          observedAt: sample.observedAt
+        ),
+        usage: sample.usage
+      )
+    }
+  }
+
+  private func TokenUsageSamples() -> [TokenUsageSample] {
+    let samples = run.tokenUsageSamples.filter { $0.usage.isTurnRoundUsage }
+    if !samples.isEmpty {
+      return samples
+    }
+    guard let usage = run.tokenUsage, usage.isTurnRoundUsage else {
+      return []
+    }
+    return [TokenUsageSample(usage: usage, observedAt: run.endedAt)]
+  }
+
+  private func TokenUsageSubtitle(
+    sampleIndex: Int,
+    sampleCount: Int,
+    observedAt: Date
+  ) -> String {
+    var values = [StatusText(run.status), run.ElapsedString(), run.RanAtString()]
+    if sampleCount > 1 {
+      values.insert("Round \(sampleIndex + 1) of \(sampleCount)", at: 1)
+    }
+    values.append("Updated \(FormatClockTime(observedAt))")
+    return values.joined(separator: " · ")
+  }
+
+  private func RunKindNoun() -> String {
+    RuntimeTurnKindNoun(
+      scope: run.scope,
+      taskKind: run.taskKind,
+      sessionSource: run.sessionSource,
+      subAgentSource: run.subAgentSource
+    )
   }
 
   private func FileHistoryPage() -> RuntimeHistoryPage<FileChangeSummary> {

@@ -159,11 +159,11 @@ Track daemon-side work in `codex-rs/codexd/docs/dev_plans/menubar_status_hub_pre
 - A persistent Status Center window shows runtime navigation, selected turn details, and daemon diagnostics using the same state as the popover.
 - The Status Center sidebar starts compact, remains user-resizable, and restores the last expanded width after collapse/expand.
 - Opening the Status Center switches the accessory menu bar app to regular activation so the persistent window has a Dock icon; closing the Status Center restores accessory mode.
-- Runtime detail panes expose token usage as a browsable per-turn history across current-turn rounds, latest reported usage, and recent completed runs. The round history excludes total-only context estimates because those are live context recomputations, not model-response rounds.
+- Runtime detail panes distinguish turn, thread, and session token concepts: turn usage browses model-response rounds across current and completed turns, thread usage shows the latest codexd per-thread total, and session usage aggregates the latest totals from every tracked thread in the runtime session. The round history excludes total-only context estimates because those are live context recomputations, not model-response rounds.
 - Runtime detail panes render transient turn IDs as meaningful status text. Post-turn review panes show the review target as the previous completed turn instead of exposing the session-local parent turn ID.
 - Post-turn review runtime panels resolve delegate token updates by `turnKey`, and de-dupe completion history when `runtimeUpsert` removes the active delegate before the forwarded `turn/completed` notification.
 - Runtime detail sections use disclosure cards consistently for prompt, details, token usage, session totals, errors, plan, files, commands, and completed turns.
-- Runtime detail panes page through longer plan, active-turn file, command, recent-run, and expanded-run histories with newest/older controls instead of truncating the only visible slice.
+- Runtime detail panes page through longer plan, active-turn file, command, recent-run, expanded-run file/command, and expanded-run token histories with newest/older controls instead of truncating the only visible slice.
 - The UI remains read-only for daemon/runtime state; control actions are still gated on future runtime capabilities.
 - The daemon prerequisite plan has started with `codexd/hello`, summary-oriented `codexd/runtime/updateState`, and broader notification relay.
 

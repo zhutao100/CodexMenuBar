@@ -199,6 +199,133 @@ final class TurnStoreHistoryTests: XCTestCase {
       ])
   }
 
+  func testSessionTokenUsageAggregatesLatestThreadTotals() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1", threadId: "main-thread", turnId: "turn-1", at: start)
+
+    var mainTotal = TokenUsageInfo()
+    mainTotal.totalTokens = 10_000
+    mainTotal.inputTokens = 7_000
+    mainTotal.cachedInputTokens = 2_000
+    mainTotal.outputTokens = 3_000
+    var mainRound = TokenUsageInfo()
+    mainRound.totalTokens = 2_500
+    mainRound.inputTokens = 1_800
+    mainRound.outputTokens = 700
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "main-thread",
+      turnId: "turn-1",
+      tokenUsageTotal: mainTotal,
+      tokenUsageLast: mainRound,
+      observedAt: start.addingTimeInterval(1)
+    )
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: "delegate-thread:post-turn-review-0",
+      at: start.addingTimeInterval(2)
+    )
+    var delegateTotal = TokenUsageInfo()
+    delegateTotal.totalTokens = 3_200
+    delegateTotal.inputTokens = 2_700
+    delegateTotal.cachedInputTokens = 800
+    delegateTotal.outputTokens = 500
+    delegateTotal.reasoningTokens = 120
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: "delegate-thread:post-turn-review-0",
+      tokenUsageTotal: delegateTotal,
+      tokenUsageLast: delegateTotal,
+      observedAt: start.addingTimeInterval(3)
+    )
+
+    var rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].sessionTokenUsage?.threadCount, 2)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.totalTokens, 13_200)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.inputTokens, 9_700)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.cachedInputTokens, 2_800)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.outputTokens, 3_500)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.reasoningTokens, 120)
+    XCTAssertNil(rows[0].sessionTokenUsage?.usage.contextWindow)
+
+    var updatedMainTotal = TokenUsageInfo()
+    updatedMainTotal.totalTokens = 12_400
+    updatedMainTotal.inputTokens = 8_400
+    updatedMainTotal.cachedInputTokens = 2_800
+    updatedMainTotal.outputTokens = 4_000
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "main-thread",
+      turnId: "turn-1",
+      tokenUsageTotal: updatedMainTotal,
+      tokenUsageLast: mainRound,
+      observedAt: start.addingTimeInterval(4)
+    )
+
+    rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].sessionTokenUsage?.threadCount, 2)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.totalTokens, 15_600)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.inputTokens, 11_100)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.cachedInputTokens, 3_600)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.outputTokens, 4_500)
+  }
+
+  func testTurnKeyOnlyTokenUsageContributesToSessionAggregateByResolvedThread() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let turnKey = "delegate-thread:post-turn-review-0"
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      at: start
+    )
+
+    var firstTotal = TokenUsageInfo()
+    firstTotal.totalTokens = 3_200
+    firstTotal.inputTokens = 2_700
+    firstTotal.outputTokens = 500
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: nil,
+      turnId: nil,
+      turnKey: turnKey,
+      tokenUsageTotal: firstTotal,
+      tokenUsageLast: firstTotal,
+      observedAt: start.addingTimeInterval(1)
+    )
+
+    var secondTotal = TokenUsageInfo()
+    secondTotal.totalTokens = 4_100
+    secondTotal.inputTokens = 3_400
+    secondTotal.outputTokens = 700
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "delegate-thread",
+      turnId: "post-turn-review-0",
+      turnKey: turnKey,
+      tokenUsageTotal: secondTotal,
+      tokenUsageLast: secondTotal,
+      observedAt: start.addingTimeInterval(2)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].sessionTokenUsage?.threadCount, 1)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.totalTokens, 4_100)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.inputTokens, 3_400)
+    XCTAssertEqual(rows[0].sessionTokenUsage?.usage.outputTokens, 700)
+  }
+
   func testTokenUsageSampleHistorySkipsDuplicateConsecutiveUpdates() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)

@@ -105,6 +105,11 @@ struct TokenUsageSample: Equatable {
   let observedAt: Date
 }
 
+struct SessionTokenUsageSummary: Equatable {
+  let usage: TokenUsageInfo
+  let threadCount: Int
+}
+
 struct ErrorInfo: Equatable {
   let message: String
   let details: String?
@@ -243,6 +248,7 @@ struct EndpointMetadata {
   var tokenUsageTotal: TokenUsageInfo?
   var tokenUsageLast: TokenUsageInfo?
   var tokenUsageSamples: [TokenUsageSample] = []
+  var sessionTokenUsageByThread: [String: TokenUsageSample] = [:]
   var latestError: ErrorInfo?
   var gitInfo: GitInfo?
   var rateLimits: RateLimitInfo?
@@ -274,6 +280,7 @@ struct EndpointRow {
   let tokenUsageTotal: TokenUsageInfo?
   let tokenUsageLast: TokenUsageInfo?
   let tokenUsageSamples: [TokenUsageSample]
+  let sessionTokenUsage: SessionTokenUsageSummary?
   let latestError: ErrorInfo?
   let fileChanges: [FileChangeSummary]
   let commands: [CommandSummary]
