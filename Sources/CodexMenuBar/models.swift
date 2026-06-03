@@ -324,6 +324,7 @@ struct CompletedRun: Equatable {
   let parentTurnId: String?
   let threadName: String?
   let tokenUsage: TokenUsageInfo?
+  let tokenUsageTotal: TokenUsageInfo?
   let tokenUsageSamples: [TokenUsageSample]
   let fileChanges: [FileChangeSummary]
   let commands: [CommandSummary]

@@ -192,11 +192,63 @@ final class TurnStoreHistoryTests: XCTestCase {
 
     let completedRows = store.EndpointRows(activeEndpointIds: ["ep-1"])
     XCTAssertEqual(completedRows[0].recentRuns[0].tokenUsage, laterUsage)
+    XCTAssertEqual(completedRows[0].recentRuns[0].tokenUsageTotal?.totalTokens, 260)
+    XCTAssertEqual(completedRows[0].recentRuns[0].tokenUsageTotal?.inputTokens, 170)
+    XCTAssertEqual(completedRows[0].recentRuns[0].tokenUsageTotal?.outputTokens, 90)
     XCTAssertEqual(
       completedRows[0].recentRuns[0].tokenUsageSamples.map(\.usage),
       [
         firstUsage, laterUsage,
       ])
+  }
+
+  func testCompletedRunMetadataCanBeBackfilledFromCompletionPromptPreview() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: .completed,
+      at: start.addingTimeInterval(1)
+    )
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      turn: [
+        "promptPreview": "Recover this prompt from the completion payload.",
+        "model": "gpt-5-codex",
+      ],
+      at: start.addingTimeInterval(2)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(
+      rows[0].recentRuns[0].promptPreview,
+      "Recover this prompt from the completion payload.")
+    XCTAssertEqual(rows[0].recentRuns[0].model, "gpt-5-codex")
+  }
+
+  func testTurnMetadataReadsDirectPromptPreview() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+    store.UpdateTurnMetadata(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      turn: [
+        "prompt_preview": "Snapshot prompt preview"
+      ],
+      at: start.addingTimeInterval(1)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].promptPreview, "Snapshot prompt preview")
   }
 
   func testSessionTokenUsageAggregatesLatestThreadTotals() {

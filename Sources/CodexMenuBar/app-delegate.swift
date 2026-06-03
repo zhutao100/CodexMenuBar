@@ -698,8 +698,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func ApplyCompletedTurnHistoryUITestFixture() {
     let endpointId = "fixture-endpoint"
     let threadId = "fixture-thread"
+    let reviewThreadId = "fixture-review-thread"
     let now = Date()
     let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
+    let completionPrompt = """
+      Exercise completed-turn token usage history controls.
+      Verify the regular completion prompt comes from the codexd completion payload.
+      Line three must remain visible in expanded history.
+      """
+    let reviewPrompt = """
+      Review the completed turn for regressions.
+      Confirm the prompt view is not limited to two lines.
+      Confirm copying the entire prompt remains available.
+      """
 
     settingsModel.connectionState = .connected
     model.connectionState = .connected
@@ -712,14 +723,123 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     model.SetEndpointIds([endpointId])
     turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
+
+    for index in 0..<5 {
+      let turnId = "completed-history-turn-\(index)"
+      SeedCompletedUITestTurn(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        prompt: "Older completed turn \(index).",
+        startedAt: now.addingTimeInterval(-7_200 + Double(index * 480)),
+        endedAt: now.addingTimeInterval(-7_080 + Double(index * 480)),
+        tokenUsage: TokenUsageInfo(
+          inputTokens: 4_000 + (index * 300),
+          cachedInputTokens: 1_000 + (index * 120),
+          outputTokens: 700 + (index * 80),
+          reasoningTokens: 200 + (index * 30),
+          totalTokens: 4_700 + (index * 380),
+          contextWindow: 128_000
+        ),
+        command: "./scripts/verify_fast.sh --older \(index)",
+        changedPath: "Sources/CodexMenuBar/turn-store.swift"
+      )
+    }
+
     SeedCompletedUITestTurn(
       endpointId: endpointId,
-      threadId: threadId,
-      turnId: "completed-history-turn",
-      prompt: "Exercise completed-turn token usage history controls.",
-      startedAt: now.addingTimeInterval(-900),
-      endedAt: now.addingTimeInterval(-720),
+      threadId: reviewThreadId,
+      turnId: "completed-review-turn",
+      prompt: reviewPrompt,
+      startedAt: now.addingTimeInterval(-1_500),
+      endedAt: now.addingTimeInterval(-1_320),
       tokenUsage: TokenUsageInfo(
+        inputTokens: 8_800,
+        cachedInputTokens: 3_100,
+        outputTokens: 1_300,
+        reasoningTokens: 420,
+        totalTokens: 10_100,
+        contextWindow: 128_000
+      ),
+      command: "./scripts/verify_fast.sh --review",
+      changedPath: "Sources/CodexMenuBar/turn-menu-row-view.swift"
+    )
+    turnStore.UpdateTurnMetadata(
+      endpointId: endpointId,
+      threadId: reviewThreadId,
+      turnId: "completed-review-turn",
+      turn: [
+        "promptPreview": reviewPrompt,
+        "scope": "delegate",
+        "taskKind": "post_turn_completion_review",
+        "sessionSource": "subagent_review",
+        "subAgentSource": "review",
+        "parentTurnId": "completed-history-turn-4",
+        "threadName": "Post-turn review",
+        "model": "gpt-5-review",
+        "modelProvider": "OpenAI",
+        "thinkingLevel": "high",
+      ],
+      at: now.addingTimeInterval(-1_300)
+    )
+
+    let latestStartedAt = now.addingTimeInterval(-900)
+    let latestTurnId = "completed-history-turn-6"
+    let latestTurnKey = "\(threadId):\(latestTurnId)"
+    turnStore.UpsertTurnStarted(
+      endpointId: endpointId, threadId: threadId, turnId: latestTurnId, at: latestStartedAt)
+    turnStore.RecordProgress(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: latestTurnId,
+      category: .reasoning,
+      state: .started,
+      label: "Reviewing implementation path",
+      at: latestStartedAt.addingTimeInterval(12)
+    )
+    turnStore.RecordProgress(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: latestTurnId,
+      category: .tool,
+      state: .started,
+      label: "Running verification",
+      at: latestStartedAt.addingTimeInterval(54)
+    )
+    turnStore.RecordCommand(
+      endpointId: endpointId,
+      turnId: latestTurnId,
+      command: CommandSummary(
+        command: "./scripts/verify_fast.sh",
+        status: .completed,
+        exitCode: 0,
+        durationMs: 180_000
+      )
+    )
+    turnStore.RecordFileChange(
+      endpointId: endpointId,
+      turnId: latestTurnId,
+      change: FileChangeSummary(
+        path: "Sources/CodexMenuBar/turn-menu-row-view.swift", kind: .update)
+    )
+    let latestSamples = [
+      TokenUsageInfo(
+        inputTokens: 7_200,
+        cachedInputTokens: 2_600,
+        outputTokens: 900,
+        reasoningTokens: 240,
+        totalTokens: 8_100,
+        contextWindow: 128_000
+      ),
+      TokenUsageInfo(
+        inputTokens: 11_300,
+        cachedInputTokens: 4_100,
+        outputTokens: 1_640,
+        reasoningTokens: 520,
+        totalTokens: 12_940,
+        contextWindow: 128_000
+      ),
+      TokenUsageInfo(
         inputTokens: 15_600,
         cachedInputTokens: 5_900,
         outputTokens: 2_400,
@@ -727,35 +847,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         totalTokens: 18_000,
         contextWindow: 128_000
       ),
-      tokenUsageSamples: [
-        TokenUsageInfo(
-          inputTokens: 7_200,
-          cachedInputTokens: 2_600,
-          outputTokens: 900,
-          reasoningTokens: 240,
-          totalTokens: 8_100,
-          contextWindow: 128_000
-        ),
-        TokenUsageInfo(
-          inputTokens: 11_300,
-          cachedInputTokens: 4_100,
-          outputTokens: 1_640,
-          reasoningTokens: 520,
-          totalTokens: 12_940,
-          contextWindow: 128_000
-        ),
-        TokenUsageInfo(
-          inputTokens: 15_600,
-          cachedInputTokens: 5_900,
-          outputTokens: 2_400,
-          reasoningTokens: 870,
-          totalTokens: 18_000,
-          contextWindow: 128_000
-        ),
-      ],
-      command: "./scripts/verify_fast.sh",
-      changedPath: "Sources/CodexMenuBar/turn-menu-row-view.swift"
+    ]
+    for (index, sample) in latestSamples.enumerated() {
+      turnStore.UpdateTokenUsage(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: latestTurnId,
+        tokenUsageTotal: index == 2
+          ? TokenUsageInfo(
+            inputTokens: 15_600,
+            cachedInputTokens: 5_900,
+            outputTokens: 2_400,
+            reasoningTokens: 870,
+            totalTokens: 18_000,
+            contextWindow: 128_000
+          ) : nil,
+        tokenUsageLast: sample,
+        observedAt: latestStartedAt.addingTimeInterval(60 + Double(index * 12))
+      )
+    }
+    HandleNotification(
+      method: "turn/completed",
+      params: [
+        "endpointId": endpointId,
+        "threadId": threadId,
+        "fromSnapshot": true,
+        "turn": [
+          "id": latestTurnId,
+          "key": latestTurnKey,
+          "status": "completed",
+        ],
+      ]
     )
+    HandleNotification(
+      method: "turn/completed",
+      params: [
+        "endpointId": endpointId,
+        "threadId": threadId,
+        "turn": [
+          "id": latestTurnId,
+          "key": latestTurnKey,
+          "status": "completed",
+          "promptPreview": completionPrompt,
+          "model": "gpt-5-codex",
+          "modelProvider": "OpenAI",
+          "thinkingLevel": "medium",
+        ],
+      ]
+    )
+    turnStore.Tick(now: Date().addingTimeInterval(11))
     model.SyncSectionDisclosureState()
     model.InvalidateView()
   }
@@ -940,6 +1080,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           "subAgentSource": "review",
           "parentTurnId": "regular-turn",
           "threadName": "Post-turn review",
+          "promptPreview": "Review target post-turn review prompt.",
           "model": "gpt-5-review",
           "modelProvider": "OpenAI",
           "thinkingLevel": "high",
@@ -1062,6 +1203,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "id": delegateTurnId,
             "key": "stale-\(delegateTurnKey)",
             "status": "completed",
+            "promptPreview": "Stale duplicate review prompt must not replace archived prompt.",
+            "threadName": "Stale post-turn review",
           ],
         ]
       )
@@ -1296,6 +1439,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
     let turnKey = ResolveTurnKey(params: params, turn: turn)
+    let hasExplicitThreadId =
+      (StringValue(params["threadId"]) ?? StringValue(params["thread_id"])) != nil
     let threadId = ResolveCompletionThreadId(
       params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
     let status = CompletedStatusFromServerValue(turn["status"] as? String)
@@ -1329,7 +1474,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       status: status,
       at: Date()
     )
-    if archived {
+    let canPatchArchivedCompletion = archived || hasExplicitThreadId
+    if canPatchArchivedCompletion {
       turnStore.UpdateTurnMetadata(
         endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: turn,
         at: Date())

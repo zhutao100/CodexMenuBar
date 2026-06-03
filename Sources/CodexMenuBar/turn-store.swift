@@ -232,6 +232,30 @@ final class TurnStore {
     )
   }
 
+  private func AggregateTurnTokenUsage(
+    samples: [TokenUsageSample],
+    fallback: TokenUsageInfo?
+  ) -> TokenUsageInfo? {
+    let roundUsages = samples.map(\.usage).filter(\.isTurnRoundUsage)
+    if roundUsages.isEmpty {
+      guard let fallback, fallback.isTurnRoundUsage else {
+        return nil
+      }
+      return fallback
+    }
+
+    var total = TokenUsageInfo()
+    for usage in roundUsages {
+      total.inputTokens += usage.inputTokens
+      total.cachedInputTokens += usage.cachedInputTokens
+      total.outputTokens += usage.outputTokens
+      total.reasoningTokens += usage.reasoningTokens
+      total.totalTokens += usage.totalTokens
+      total.contextWindow = usage.contextWindow ?? total.contextWindow
+    }
+    return total.totalTokens > 0 ? total : nil
+  }
+
   func UpdateRuntimeMetadata(endpointId: String, cwd: String?, sessionSource: String?) {
     var metadata = metadataByEndpoint[endpointId] ?? EndpointMetadata()
     if let cwd { metadata.cwd = cwd }
@@ -493,6 +517,24 @@ final class TurnStore {
           ?? NonEmptyString(turn["parent_turn_id"]),
         threadName: NonEmptyString(turn["threadName"]) ?? NonEmptyString(turn["thread_name"])
       )
+      UpdateCompletedRunMetadata(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        turnKey: turnKey,
+        promptPreview: promptPreview,
+        model: model,
+        modelProvider: modelProvider,
+        thinkingLevel: thinkingLevel,
+        scope: NonEmptyString(turn["scope"]),
+        taskKind: NonEmptyString(turn["taskKind"]) ?? NonEmptyString(turn["task_kind"]),
+        sessionSource: sessionSource,
+        subAgentSource: NonEmptyString(turn["subAgentSource"])
+          ?? NonEmptyString(turn["sub_agent_source"]),
+        parentTurnId: NonEmptyString(turn["parentTurnId"])
+          ?? NonEmptyString(turn["parent_turn_id"]),
+        threadName: NonEmptyString(turn["threadName"]) ?? NonEmptyString(turn["thread_name"])
+      )
     }
     metadata.lastEventAt = now
     metadataByEndpoint[endpointId] = metadata
@@ -521,6 +563,13 @@ final class TurnStore {
       if let promptPreview = ExtractPromptPreview(from: pseudoTurn) {
         metadata.promptPreview = promptPreview
         activeTurn?.UpdateMetadata(promptPreview: promptPreview)
+        UpdateCompletedRunMetadata(
+          endpointId: endpointId,
+          threadId: threadId,
+          turnId: turnId,
+          turnKey: turnKey,
+          promptPreview: promptPreview
+        )
       }
     }
 
@@ -533,6 +582,60 @@ final class TurnStore {
 
     metadata.lastEventAt = now
     metadataByEndpoint[endpointId] = metadata
+  }
+
+  private func UpdateCompletedRunMetadata(
+    endpointId: String,
+    threadId: String?,
+    turnId: String,
+    turnKey: String? = nil,
+    promptPreview: String? = nil,
+    model: String? = nil,
+    modelProvider: String? = nil,
+    thinkingLevel: String? = nil,
+    scope: String? = nil,
+    taskKind: String? = nil,
+    sessionSource: String? = nil,
+    subAgentSource: String? = nil,
+    parentTurnId: String? = nil,
+    threadName: String? = nil
+  ) {
+    guard var runs = completedRunsByEndpoint[endpointId],
+      let index = runs.firstIndex(where: { run in
+        RunMatchesTurn(run, turnKey: turnKey, threadId: threadId, turnId: turnId)
+      })
+    else {
+      return
+    }
+
+    let run = runs[index]
+    runs[index] = CompletedRun(
+      endpointId: run.endpointId,
+      threadId: run.threadId,
+      turnId: run.turnId,
+      turnKey: run.turnKey,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      status: run.status,
+      latestLabel: run.latestLabel,
+      promptPreview: promptPreview ?? run.promptPreview,
+      model: model ?? run.model,
+      modelProvider: modelProvider ?? run.modelProvider,
+      thinkingLevel: thinkingLevel ?? run.thinkingLevel,
+      scope: scope ?? run.scope,
+      taskKind: taskKind ?? run.taskKind,
+      sessionSource: sessionSource ?? run.sessionSource,
+      subAgentSource: subAgentSource ?? run.subAgentSource,
+      parentTurnId: parentTurnId ?? run.parentTurnId,
+      threadName: threadName ?? run.threadName,
+      tokenUsage: run.tokenUsage,
+      tokenUsageTotal: run.tokenUsageTotal,
+      tokenUsageSamples: run.tokenUsageSamples,
+      fileChanges: run.fileChanges,
+      commands: run.commands,
+      traceHistory: run.traceHistory
+    )
+    completedRunsByEndpoint[endpointId] = runs
   }
 
   func UpdateTokenUsage(
@@ -611,6 +714,10 @@ final class TurnStore {
     var runTokenUsageSamples = run.tokenUsageSamples
     AppendTokenUsageRoundSample(runTokenUsage, at: observedAt, to: &runTokenUsageSamples)
     let updatedRunTokenUsage = runTokenUsage.isTurnRoundUsage ? runTokenUsage : run.tokenUsage
+    let updatedRunTokenUsageTotal = AggregateTurnTokenUsage(
+      samples: runTokenUsageSamples,
+      fallback: updatedRunTokenUsage ?? run.tokenUsageTotal
+    )
     runs[index] = CompletedRun(
       endpointId: run.endpointId,
       threadId: run.threadId,
@@ -631,6 +738,7 @@ final class TurnStore {
       parentTurnId: run.parentTurnId,
       threadName: run.threadName,
       tokenUsage: updatedRunTokenUsage,
+      tokenUsageTotal: updatedRunTokenUsageTotal,
       tokenUsageSamples: runTokenUsageSamples,
       fileChanges: run.fileChanges,
       commands: run.commands,
@@ -965,6 +1073,7 @@ final class TurnStore {
       turn.tokenUsageSamples.isEmpty ? metadataTokenSamples : turn.tokenUsageSamples
     let tokenUsage =
       tokenUsageSamples.last?.usage ?? turn.tokenUsageLast ?? metadata?.tokenUsageLast
+    let tokenUsageTotal = AggregateTurnTokenUsage(samples: tokenUsageSamples, fallback: tokenUsage)
     runs.insert(
       CompletedRun(
         endpointId: turn.endpointId,
@@ -986,6 +1095,7 @@ final class TurnStore {
         parentTurnId: turn.parentTurnId ?? metadata?.parentTurnId,
         threadName: turn.threadName ?? metadata?.threadName,
         tokenUsage: tokenUsage?.isTurnRoundUsage == true ? tokenUsage : nil,
+        tokenUsageTotal: tokenUsageTotal,
         tokenUsageSamples: tokenUsageSamples,
         fileChanges: turn.fileChanges,
         commands: turn.commands,
@@ -1038,6 +1148,13 @@ final class TurnStore {
   }
 
   private func ExtractPromptPreview(from turn: [String: Any]) -> String? {
+    if let promptPreview =
+      NonEmptyString(turn["promptPreview"]) ?? NonEmptyString(turn["prompt_preview"])
+      ?? NonEmptyString(turn["prompt"])
+    {
+      return promptPreview
+    }
+
     guard let items = turn["items"] as? [[String: Any]] else {
       return nil
     }

@@ -277,27 +277,46 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     let completedSection = app.buttons["turn.completedTurnsSection.fixture-endpoint"]
     XCTAssertTrue(completedSection.waitForExistence(timeout: 5))
-    XCTAssertTrue(WaitForStringLabelContaining(of: completedSection, text: "Completed Turns (1)"))
+    XCTAssertTrue(WaitForStringLabelContaining(of: completedSection, text: "Completed Turns (7)"))
 
-    let completedRun = app.buttons.matching(
-      NSPredicate(format: "identifier BEGINSWITH %@", "turn.completedRun.row.")
-    ).firstMatch
-    XCTAssertTrue(completedRun.waitForExistence(timeout: 5))
-    completedRun.click()
+    let runPosition = app.descendants(matching: .any)["turn.runsHistory.position.fixture-endpoint"]
+    XCTAssertTrue(runPosition.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: runPosition, equals: "1-5 of 7"))
+
+    let completedRunRows = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "turn.completedRun.row."))
+    XCTAssertTrue(WaitForQueryCount(completedRunRows, equals: 5, timeout: 5))
+
+    let latestRun = CompletedRunRow(containing: "completed-history-turn-6", in: app)
+    XCTAssertTrue(latestRun.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringLabelContaining(of: latestRun, text: " · latest"))
+    XCTAssertFalse(CompletedRunRow(containing: "completed-history-turn-0", in: app).exists)
+
+    XCTAssertTrue(WaitForStringValueContaining(of: latestRun, text: "Tokens: 39.0k"))
+
+    latestRun.click()
+
+    let prompt = CompletedRunPrompt(containing: "completed-history-turn-6", in: app)
+    XCTAssertTrue(prompt.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValueContaining(of: prompt, text: "Line three must remain visible"))
 
     let position = app.descendants(matching: .any).matching(
       NSPredicate(
-        format: "identifier BEGINSWITH %@",
-        "turn.completedRun.tokenUsageHistory.position.")
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "turn.completedRun.tokenUsageHistory.position.", "completed-history-turn-6")
     ).firstMatch
     XCTAssertTrue(position.waitForExistence(timeout: 5))
     XCTAssertTrue(WaitForStringValue(of: position, equals: "1 of 3"))
 
     let title = app.descendants(matching: .any).matching(
-      NSPredicate(format: "identifier BEGINSWITH %@", "turn.completedRun.tokenUsageHistory.title.")
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "turn.completedRun.tokenUsageHistory.title.", "completed-history-turn-6")
     ).firstMatch
     let detail = app.descendants(matching: .any).matching(
-      NSPredicate(format: "identifier BEGINSWITH %@", "turn.completedRun.tokenUsageHistory.detail.")
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "turn.completedRun.tokenUsageHistory.detail.", "completed-history-turn-6")
     ).firstMatch
     XCTAssertTrue(title.waitForExistence(timeout: 5))
     XCTAssertTrue(detail.waitForExistence(timeout: 5))
@@ -325,7 +344,59 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(newerButton.isEnabled)
     newerButton.click()
     XCTAssertTrue(WaitForStringValue(of: position, equals: "2 of 3"))
+
+    let olderRunsButton = app.buttons["turn.runsHistory.older.fixture-endpoint"]
+    XCTAssertTrue(olderRunsButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(olderRunsButton.isEnabled)
+    olderRunsButton.click()
+    XCTAssertTrue(WaitForStringValue(of: runPosition, equals: "6-7 of 7"))
+    XCTAssertTrue(WaitForQueryCount(completedRunRows, equals: 2, timeout: 5))
+    XCTAssertTrue(CompletedRunRow(containing: "completed-history-turn-1", in: app).exists)
+    XCTAssertTrue(CompletedRunRow(containing: "completed-history-turn-0", in: app).exists)
+    XCTAssertFalse(CompletedRunRow(containing: "completed-history-turn-6", in: app).exists)
+
+    let newerRunsButton = app.buttons["turn.runsHistory.newer.fixture-endpoint"]
+    XCTAssertTrue(newerRunsButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(newerRunsButton.isEnabled)
+    newerRunsButton.click()
+    XCTAssertTrue(WaitForStringValue(of: runPosition, equals: "1-5 of 7"))
     AttachScreenshot(named: "status-center-completed-turn-token-history", app: app)
+  }
+
+  func testStatusCenterCompletedTurnPromptIsFullyReadableAndCopyable() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "completed-turn-history")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let reviewRun = CompletedRunRow(containing: "completed-review-turn", in: app)
+    XCTAssertTrue(reviewRun.waitForExistence(timeout: 5))
+    reviewRun.click()
+
+    let prompt = CompletedRunPrompt(containing: "completed-review-turn", in: app)
+    XCTAssertTrue(prompt.waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      WaitForStringValueContaining(
+        of: prompt, text: "Confirm copying the entire prompt remains available."))
+
+    NSPasteboard.general.clearContents()
+    let copyButton = app.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "turn.completedRun.copyPrompt.", "completed-review-turn")
+    ).firstMatch
+    XCTAssertTrue(copyButton.waitForExistence(timeout: 5))
+    copyButton.click()
+    XCTAssertTrue(
+      WaitForPasteboardContaining("Confirm copying the entire prompt remains available."))
+    AttachScreenshot(named: "status-center-completed-turn-prompt-copy", app: app)
   }
 
   func testStatusCenterPostTurnReviewLifecycleRefreshesTokensAndDedupesCompletion() throws {
@@ -389,6 +460,14 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(WaitForStringValueContaining(of: reviewDetails, text: "Post-turn review"))
     XCTAssertTrue(WaitForStringValueContaining(of: reviewDetails, text: "fixture-delegate-thread"))
     XCTAssertTrue(WaitForStringValueContaining(of: reviewDetails, text: "Review target"))
+
+    let reviewPrompt = CompletedRunPrompt(containing: "fixture-delegate-thread:0", in: app)
+    XCTAssertTrue(reviewPrompt.waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      WaitForStringValueContaining(of: reviewPrompt, text: "Review target post-turn review prompt.")
+    )
+    XCTAssertFalse(
+      String(describing: reviewPrompt.value ?? "").contains("Stale duplicate review prompt"))
     AttachScreenshot(named: "status-center-post-turn-review-lifecycle", app: app)
   }
 
@@ -717,6 +796,23 @@ final class MenuBarUISmokeTests: XCTestCase {
     throw XCTSkip("Unable to locate context menu item '\(title)'.")
   }
 
+  private func CompletedRunRow(containing turnId: String, in app: XCUIApplication) -> XCUIElement {
+    app.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "turn.completedRun.row.", turnId)
+    ).firstMatch
+  }
+
+  private func CompletedRunPrompt(containing turnId: String, in app: XCUIApplication) -> XCUIElement
+  {
+    app.staticTexts.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "turn.completedRun.prompt.", turnId)
+    ).firstMatch
+  }
+
   private func WaitForStringValue(
     of element: XCUIElement,
     equals expected: String,
@@ -769,6 +865,17 @@ final class MenuBarUISmokeTests: XCTestCase {
     let predicate = NSPredicate(format: "exists == false")
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func WaitForPasteboardContaining(_ expected: String, timeout: TimeInterval = 5) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if NSPasteboard.general.string(forType: .string)?.contains(expected) == true {
+        return true
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+    return false
   }
 
   private func WaitForQueryCount(

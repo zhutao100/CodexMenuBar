@@ -154,6 +154,7 @@ CODEX_HOME="${RUN_DIR}/codex_home"
 SOCKET_PATH="${ROOT}/.artifacts/codexd-e2e.sock"
 CODEXD_LOG="${RUN_DIR}/codexd.log"
 RESULT_JSON="${RUN_DIR}/result.json"
+BRIDGE_TEST_LOG="${RUN_DIR}/menubar_bridge_prompt_test.log"
 
 mkdir -p "${CODEX_HOME}"
 mkdir -p "$(dirname "${SOCKET_PATH}")"
@@ -173,6 +174,25 @@ echo "[e2e_codexd] runDir=${RUN_DIR}"
 echo "[e2e_codexd] codexHome=${CODEX_HOME}"
 echo "[e2e_codexd] socketPath=${SOCKET_PATH}"
 echo "[e2e_codexd] launcher=${CODEX_LAUNCH_DESC}"
+
+if [[ -z "${CODEX_BIN}" ]]; then
+  echo "[e2e_codexd] checking menubar bridge prompt retention..."
+  if ! (
+    cd "${CODEX_REPO_ROOT}/codex-rs"
+    CODEX_SANDBOX_NETWORK_DISABLED="${CODEX_SANDBOX_NETWORK_DISABLED:-1}" \
+      scripts/cargo-local test -p codex-tui \
+      publish_event_user_message_item_prompt_preview
+  ) >"${BRIDGE_TEST_LOG}" 2>&1; then
+    echo "[e2e_codexd] ERROR: menubar bridge prompt retention check failed" >&2
+    tail -n 80 "${BRIDGE_TEST_LOG}" >&2 || true
+    exit 1
+  fi
+  if ! grep -Eq 'tests ok \([1-9][0-9]* passed;' "${BRIDGE_TEST_LOG}"; then
+    echo "[e2e_codexd] ERROR: menubar bridge prompt retention check did not run" >&2
+    tail -n 80 "${BRIDGE_TEST_LOG}" >&2 || true
+    exit 1
+  fi
+fi
 
 echo "[e2e_codexd] starting codexd..."
 if [[ -n "${CODEX_BIN}" ]]; then
@@ -287,6 +307,7 @@ prod = connect()
 runtime_id = "rt-e2e"
 thread_id = "thread-e2e"
 turn_id = "turn-e2e"
+regular_prompt = "Regular prompt carried by the completion notification"
 delegate_thread_id = "thread-e2e-review"
 delegate_turn_id = "0"
 delegate_turn_key = f"{delegate_thread_id}:{delegate_turn_id}"
@@ -413,6 +434,7 @@ send_line(prod, {
         "turn": {
           "id": turn_id,
           "status": "completed",
+          "promptPreview": regular_prompt,
         },
       },
     },
@@ -559,6 +581,7 @@ state_upsert_seen = False
 delegate_upsert_seen = False
 delegate_token_upsert_seen = False
 delegate_token_key_only_notification_seen = False
+regular_completion_prompt_seen = False
 delegate_completion_seen = False
 stale_duplicate_delegate_completion_seen = False
 notifs = []
@@ -603,6 +626,12 @@ for e in codexd_events:
       notification_params = notification.get("params") or {}
       turn = notification_params.get("turn") or {}
       if (
+        notification_params.get("threadId") == thread_id
+        and turn.get("id") == turn_id
+        and turn.get("promptPreview") == regular_prompt
+      ):
+        regular_completion_prompt_seen = True
+      if (
         notification_params.get("threadId") == delegate_thread_id
         and turn.get("id") == delegate_turn_id
         and turn.get("key") == delegate_turn_key
@@ -646,6 +675,8 @@ if "item/completed" not in notif_methods:
   fail(f"expected item/completed notification in runtimeNotification events, got: {notif_methods!r}")
 if notif_methods.count("turn/completed") < 3:
   fail(f"expected regular, delegate, and duplicate delegate turn/completed notifications, got: {notif_methods!r}")
+if not regular_completion_prompt_seen:
+  fail("expected regular turn/completed notification to carry promptPreview")
 if not delegate_completion_seen:
   fail("expected keyed delegate turn/completed notification")
 if not stale_duplicate_delegate_completion_seen:
@@ -663,6 +694,7 @@ out = {
   "eventSeqs": seqs,
   "eventTypes": [e.get("params", {}).get("event", {}).get("type") for e in codexd_events],
   "runtimeNotificationMethods": notif_methods,
+  "regularCompletionPromptSeen": regular_completion_prompt_seen,
 }
 
 with open(out_json, "w", encoding="utf-8") as f:

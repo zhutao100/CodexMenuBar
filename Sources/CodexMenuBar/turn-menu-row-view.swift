@@ -13,6 +13,7 @@ private struct RuntimeHistoryPage<Item> {
   let items: [Item]
   let page: Int
   let pageSize: Int
+  var startsAtNewest = false
 
   var visibleItems: [Item] {
     let range = range
@@ -49,6 +50,12 @@ private struct RuntimeHistoryPage<Item> {
   private var range: Range<Int> {
     guard items.count > 0, pageSize > 0 else {
       return 0..<0
+    }
+
+    if startsAtNewest {
+      let start = min(items.count, clampedPage * pageSize)
+      let end = min(items.count, start + pageSize)
+      return start..<end
     }
 
     let end = items.count - (clampedPage * pageSize)
@@ -1031,7 +1038,8 @@ struct TurnMenuRowView: View {
 
   private func RunHistoryPage() -> RuntimeHistoryPage<CompletedRun> {
     RuntimeHistoryPage(
-      items: endpointRow.recentRuns, page: runHistoryPage, pageSize: RuntimeHistoryPageSize.runs)
+      items: endpointRow.recentRuns, page: runHistoryPage, pageSize: RuntimeHistoryPageSize.runs,
+      startsAtNewest: true)
   }
 
   private func ShowNewerRuns() {
@@ -1306,6 +1314,14 @@ private struct RunHistoryRowView: View {
 
           Spacer(minLength: 4)
 
+          if let usage = FoldedTokenUsage() {
+            Text("\(FormatTokenCount(usage.totalTokens)) tokens")
+              .font(.system(size: 9, weight: .medium, design: .monospaced))
+              .foregroundStyle(.tertiary)
+              .lineLimit(1)
+              .accessibilityIdentifier("turn.completedRun.tokenUsageTotal.\(run.runKey)")
+          }
+
           Text(isExpanded ? "▾" : "▸")
             .font(.system(size: 9, weight: .medium))
             .foregroundStyle(.tertiary)
@@ -1315,10 +1331,10 @@ private struct RunHistoryRowView: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel(TitleText())
-      .accessibilityValue(TurnDetailsLine() ?? "")
+      .accessibilityValue(AccessibilityDetailsLine())
       .accessibilityIdentifier("turn.completedRun.row.\(run.runKey)")
 
-      if let usage = run.tokenUsage, usage.totalTokens > 0 {
+      if let usage = FoldedTokenUsage() {
         TokenUsageBarView(usage: usage)
           .frame(maxWidth: .infinity)
           .frame(height: 7)
@@ -1333,10 +1349,7 @@ private struct RunHistoryRowView: View {
 
       if isExpanded {
         VStack(alignment: .leading, spacing: 4) {
-          Text("Prompt: \(run.promptPreview ?? "Prompt unavailable")")
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
+          CompletedRunPromptView(run: run, onCopy: { CopyToClipboard($0) })
 
           if let turnDetails = TurnDetailsLine() {
             Text(turnDetails)
@@ -1456,6 +1469,13 @@ private struct RunHistoryRowView: View {
       "\(RunKindLabel()) · \(StatusText(run.status)) · \(run.ElapsedString()) · \(run.RanAtString())\(suffix)"
   }
 
+  private func FoldedTokenUsage() -> TokenUsageInfo? {
+    guard let usage = run.tokenUsageTotal ?? run.tokenUsage, usage.totalTokens > 0 else {
+      return nil
+    }
+    return usage
+  }
+
   private func RunKindLabel() -> String {
     RuntimeTurnKindLabel(
       scope: run.scope,
@@ -1475,6 +1495,17 @@ private struct RunHistoryRowView: View {
     }
     if NonEmpty(run.parentTurnId) != nil {
       values.append(ParentTurnDetailText(taskKind: run.taskKind))
+    }
+    return values.joined(separator: " · ")
+  }
+
+  private func AccessibilityDetailsLine() -> String {
+    var values: [String] = []
+    if let turnDetails = TurnDetailsLine() {
+      values.append(turnDetails)
+    }
+    if let usage = FoldedTokenUsage() {
+      values.append("Tokens: \(FormatTokenCount(usage.totalTokens))")
     }
     return values.joined(separator: " · ")
   }
@@ -1627,6 +1658,57 @@ private struct RunHistoryRowView: View {
     }
 
     return trimmed.replacingOccurrences(of: "_", with: "-")
+  }
+
+  @MainActor
+  private func CopyToClipboard(_ value: String) {
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(value, forType: .string)
+  }
+}
+
+private struct CompletedRunPromptView: View {
+  let run: CompletedRun
+  let onCopy: (String) -> Void
+
+  var body: some View {
+    SectionCard {
+      HStack(spacing: 6) {
+        Label("Prompt", systemImage: "text.bubble.fill")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(.tertiary)
+
+        Spacer(minLength: 4)
+
+        if let prompt = PromptText {
+          Button(action: { onCopy(prompt) }) {
+            Label("Copy prompt", systemImage: "doc.on.doc")
+              .font(.system(size: 9, weight: .semibold))
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("Copy completed turn prompt")
+          .accessibilityIdentifier("turn.completedRun.copyPrompt.\(run.runKey)")
+          .help("Copy completed turn prompt")
+        }
+      }
+    } content: {
+      Text(PromptText ?? "Prompt unavailable")
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+        .lineLimit(nil)
+        .textSelection(.enabled)
+        .accessibilityIdentifier("turn.completedRun.prompt.\(run.runKey)")
+    }
+  }
+
+  private var PromptText: String? {
+    guard let prompt = run.promptPreview?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !prompt.isEmpty
+    else {
+      return nil
+    }
+    return prompt
   }
 }
 
