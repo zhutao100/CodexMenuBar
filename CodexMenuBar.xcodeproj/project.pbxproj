@@ -29,6 +29,7 @@
 		BF2D9BA8FE5B433D2FA70330 /* turn-store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78CA2874DC40F8B93A9EB459 /* turn-store.swift */; };
 		C7796AEA5CC4B25A10CFE929 /* settings-window-controller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682B286B26D4990EF76A1D90 /* settings-window-controller.swift */; };
 		C7BBA209DAD72F4E3077B71A /* login-item-manager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27CE6A9998F118CF1DBC0BE7 /* login-item-manager.swift */; };
+		CA95F205167FEBF91871BB86 /* prompt-disclosure-preview-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F46AFC789B9E46F4C175BE7 /* prompt-disclosure-preview-tests.swift */; };
 		E6C42C977B850D09DB995995 /* svgs in Resources */ = {isa = PBXBuildFile; fileRef = F132C795B266D59244279110 /* svgs */; };
 /* End PBXBuildFile section */
 
@@ -53,6 +54,7 @@
 		1CBBF48CB606BAA159CDCAC1 /* plan-parsing-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "plan-parsing-tests.swift"; sourceTree = "<group>"; };
 		1F5C3C76FDE4BE37009A342F /* turn-store-history-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-store-history-tests.swift"; sourceTree = "<group>"; };
 		27CE6A9998F118CF1DBC0BE7 /* login-item-manager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "login-item-manager.swift"; sourceTree = "<group>"; };
+		2F46AFC789B9E46F4C175BE7 /* prompt-disclosure-preview-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "prompt-disclosure-preview-tests.swift"; sourceTree = "<group>"; };
 		441EB267B7F3F0EB16AC5B90 /* settings-view-model-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "settings-view-model-tests.swift"; sourceTree = "<group>"; };
 		44FEEFD4C844D846E248FD89 /* CodexMenuBarMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexMenuBarMain.swift; sourceTree = "<group>"; };
 		52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "terminal-launcher-tests.swift"; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 				552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */,
 				9907DD2492503B856D3F71BC /* menu-bar-view-model-tests.swift */,
 				1CBBF48CB606BAA159CDCAC1 /* plan-parsing-tests.swift */,
+				2F46AFC789B9E46F4C175BE7 /* prompt-disclosure-preview-tests.swift */,
 				441EB267B7F3F0EB16AC5B90 /* settings-view-model-tests.swift */,
 				52BB1E04D6BF49B7E3112E12 /* terminal-launcher-tests.swift */,
 				1F5C3C76FDE4BE37009A342F /* turn-store-history-tests.swift */,
@@ -297,6 +300,7 @@
 				90EB39AD9EBFF1A243C72036 /* codexd-socket-configuration-tests.swift in Sources */,
 				5E5FAF31C17D8820D39CEB67 /* menu-bar-view-model-tests.swift in Sources */,
 				B09DE4975945056CA0F0E27B /* plan-parsing-tests.swift in Sources */,
+				CA95F205167FEBF91871BB86 /* prompt-disclosure-preview-tests.swift in Sources */,
 				1B63BDAC583D18A8CD254B6A /* settings-view-model-tests.swift in Sources */,
 				0B7FAAE9CE795148E197BF17 /* terminal-launcher-tests.swift in Sources */,
 				4BB58697DC074F70B2884432 /* turn-store-history-tests.swift in Sources */,

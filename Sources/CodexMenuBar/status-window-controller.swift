@@ -340,31 +340,40 @@ private struct StatusCenterCollapsedRuntimeButton: View {
   let action: () -> Void
 
   var body: some View {
-    Button(action: action) {
-      ZStack(alignment: .bottomTrailing) {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+    ZStack(alignment: .bottomTrailing) {
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+        .frame(width: 30, height: 30)
+        .accessibilityHidden(true)
+
+      Image(systemName: row.activeTurn == nil ? "terminal" : "play.circle.fill")
+        .font(.system(size: 18, weight: .medium))
+        .foregroundStyle(row.activeTurn == nil ? Color.secondary : Color.green)
+        .frame(width: 30, height: 30, alignment: .center)
+        .accessibilityLabel("Runtime status icon")
+        .accessibilityIdentifier("statusCenter.collapsedRuntime.icon.\(row.endpointId)")
+
+      Circle()
+        .fill(row.activeTurn == nil ? Color.secondary.opacity(0.55) : Color.green)
+        .frame(width: 6, height: 6)
+        .overlay(
+          Circle()
+            .stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1)
+        )
+        .offset(x: -3, y: -3)
+        .accessibilityHidden(true)
+
+      Button(action: action) {
+        Color.clear
           .frame(width: 30, height: 30)
-
-        Image(systemName: row.activeTurn == nil ? "terminal" : "play.circle.fill")
-          .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(row.activeTurn == nil ? Color.secondary : Color.green)
-
-        Circle()
-          .fill(row.activeTurn == nil ? Color.secondary.opacity(0.55) : Color.green)
-          .frame(width: 6, height: 6)
-          .overlay(
-            Circle()
-              .stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1)
-          )
-          .offset(x: -3, y: -3)
+          .contentShape(Rectangle())
       }
-      .contentShape(Rectangle())
+      .buttonStyle(.plain)
+      .accessibilityLabel("Select \(row.displayName)")
+      .accessibilityIdentifier("statusCenter.collapsedRuntime.\(row.endpointId)")
     }
-    .buttonStyle(.plain)
+    .frame(width: 30, height: 30)
     .help(row.displayName)
-    .accessibilityLabel("Select \(row.displayName)")
-    .accessibilityIdentifier("statusCenter.collapsedRuntime.\(row.endpointId)")
   }
 }
 

@@ -28,6 +28,40 @@ final class MenuBarUISmokeTests: XCTestCase {
     AttachScreenshot(named: "settings-opened-from-status-popover", app: app)
   }
 
+  func testStatusPopoverHeaderActionsShowHoverHelpWithoutRelayout() throws {
+    let app = LaunchApp(statusSurface: "popover")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+
+    let reconnectButton = app.buttons["status.reconnect"]
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    let daemonSummary = app.staticTexts["status.daemonSummary"]
+    let hoverHelp = app.staticTexts["status.headerActionHoverHelp"]
+    XCTAssertTrue(reconnectButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    XCTAssertTrue(daemonSummary.waitForExistence(timeout: 5))
+    XCTAssertFalse(hoverHelp.exists)
+
+    let reconnectFrame = reconnectButton.frame
+    let statusCenterFrame = statusCenterButton.frame
+
+    reconnectButton.hover()
+    XCTAssertTrue(hoverHelp.waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      WaitForStringValueContaining(
+        of: hoverHelp, text: "Reconnect to codexd and refresh all runtime state"))
+    AssertFrame(reconnectButton.frame, matches: reconnectFrame)
+    AssertFrame(statusCenterButton.frame, matches: statusCenterFrame)
+    AttachScreenshot(named: "status-popover-header-action-hover-help", app: app)
+
+    daemonSummary.hover()
+    XCTAssertTrue(WaitForNonExistence(of: hoverHelp))
+    AssertFrame(reconnectButton.frame, matches: reconnectFrame)
+    AssertFrame(statusCenterButton.frame, matches: statusCenterFrame)
+  }
+
   func testStatusPopoverDismissesWhenClickingElsewhere() throws {
     let app = LaunchApp(statusSurface: "popover")
     let statusItem = try StatusItem(in: app)
@@ -100,8 +134,18 @@ final class MenuBarUISmokeTests: XCTestCase {
 
     XCTAssertTrue(WaitForNonExistence(of: runtimeList))
     XCTAssertTrue(WaitForNonExistence(of: app.staticTexts["Runtimes"]))
-    XCTAssertTrue(
-      app.buttons["statusCenter.collapsedRuntime.fixture-endpoint"].waitForExistence(timeout: 5))
+    let collapsedRuntime = app.buttons["statusCenter.collapsedRuntime.fixture-endpoint"]
+    XCTAssertTrue(collapsedRuntime.waitForExistence(timeout: 5))
+    let collapsedRuntimeIcon = app.descendants(matching: .any)[
+      "statusCenter.collapsedRuntime.icon.fixture-endpoint"]
+    XCTAssertTrue(collapsedRuntimeIcon.waitForExistence(timeout: 5))
+    XCTAssertGreaterThanOrEqual(collapsedRuntime.frame.width, 30)
+    XCTAssertGreaterThanOrEqual(collapsedRuntime.frame.height, 30)
+    XCTAssertGreaterThanOrEqual(collapsedRuntimeIcon.frame.width, 17)
+    XCTAssertGreaterThanOrEqual(collapsedRuntimeIcon.frame.height, 17)
+    XCTAssertEqual(collapsedRuntimeIcon.frame.midX, collapsedRuntime.frame.midX, accuracy: 1)
+    XCTAssertEqual(collapsedRuntimeIcon.frame.midY, collapsedRuntime.frame.midY, accuracy: 1)
+    AttachScreenshot(named: "status-center-sidebar-collapsed-runtime-icon", app: app)
 
     let expandToggle = app.buttons["statusCenter.sidebarToggle"]
     XCTAssertTrue(expandToggle.waitForExistence(timeout: 5))
@@ -113,6 +157,45 @@ final class MenuBarUISmokeTests: XCTestCase {
     let expandedSidebarWidth = resizeHandle.frame.midX - statusWindow.frame.minX
     XCTAssertLessThan(abs(expandedSidebarWidth - compactSidebarWidth), 10)
     AttachScreenshot(named: "status-center-sidebar-expanded", app: app)
+  }
+
+  func testStatusCenterActivePromptFoldsToFiveLinesAndExpands() throws {
+    let app = LaunchApp(statusSurface: "popover", fixture: "active-turn")
+    let statusItem = try StatusItem(in: app)
+
+    XCTAssertTrue(statusItem.waitForExistence(timeout: 10))
+    XCTAssertTrue(EnsureStatusPopoverOpen(in: app, statusItem: statusItem))
+    let statusCenterButton = app.buttons["status.statusCenter"]
+    XCTAssertTrue(statusCenterButton.waitForExistence(timeout: 5))
+    statusCenterButton.click()
+
+    let statusWindow = app.windows["Codex Status Center"]
+    XCTAssertTrue(statusWindow.waitForExistence(timeout: 5))
+
+    let prompt = app.staticTexts["turn.prompt.fixture-endpoint"]
+    XCTAssertTrue(prompt.waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      WaitForStringValueContaining(of: prompt, text: "Show five prompt lines by default."))
+    XCTAssertFalse(
+      String(describing: prompt.value ?? "").contains(
+        "Reveal this sixth active prompt line only after expansion."))
+
+    let promptToggle = app.buttons["turn.promptSection.fixture-endpoint"]
+    XCTAssertTrue(promptToggle.waitForExistence(timeout: 5))
+    promptToggle.click()
+    let expandedPrompt = app.staticTexts["turn.prompt.fixture-endpoint"]
+    XCTAssertTrue(
+      WaitForStringValueContaining(
+        of: expandedPrompt, text: "Reveal this sixth active prompt line only after expansion."))
+
+    promptToggle.click()
+    let refoldedPrompt = app.staticTexts["turn.prompt.fixture-endpoint"]
+    XCTAssertTrue(
+      WaitForStringValueContaining(of: refoldedPrompt, text: "Show five prompt lines by default."))
+    XCTAssertFalse(
+      String(describing: refoldedPrompt.value ?? "").contains(
+        "Reveal this sixth active prompt line only after expansion."))
+    AttachScreenshot(named: "status-center-active-prompt-folded", app: app)
   }
 
   func testStatusCenterTokenUsageHistoryBrowsesEarlierTurnsWithoutContextEstimateGhosts() throws {
@@ -299,6 +382,25 @@ final class MenuBarUISmokeTests: XCTestCase {
     let prompt = CompletedRunPrompt(containing: "completed-history-turn-6", in: app)
     XCTAssertTrue(prompt.waitForExistence(timeout: 5))
     XCTAssertTrue(WaitForStringValueContaining(of: prompt, text: "Line three must remain visible"))
+    XCTAssertTrue(WaitForStringValueContaining(of: prompt, text: "Line five should remain"))
+    XCTAssertFalse(
+      String(describing: prompt.value ?? "").contains(
+        "Line six should appear only after expanding the completed prompt."))
+
+    let promptToggle = CompletedRunPromptToggle(containing: "completed-history-turn-6", in: app)
+    XCTAssertTrue(promptToggle.waitForExistence(timeout: 5))
+    promptToggle.click()
+    let expandedPrompt = CompletedRunPrompt(containing: "completed-history-turn-6", in: app)
+    XCTAssertTrue(
+      WaitForStringValueContaining(
+        of: expandedPrompt,
+        text: "Line six should appear only after expanding the completed prompt."))
+
+    promptToggle.click()
+    let refoldedPrompt = CompletedRunPrompt(containing: "completed-history-turn-6", in: app)
+    XCTAssertFalse(
+      String(describing: refoldedPrompt.value ?? "").contains(
+        "Line six should appear only after expanding the completed prompt."))
 
     let position = app.descendants(matching: .any).matching(
       NSPredicate(
@@ -385,6 +487,17 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(
       WaitForStringValueContaining(
         of: prompt, text: "Confirm copying the entire prompt remains available."))
+    XCTAssertFalse(
+      String(describing: prompt.value ?? "").contains(
+        "Confirm this sixth review line appears only after expansion."))
+
+    let promptToggle = CompletedRunPromptToggle(containing: "completed-review-turn", in: app)
+    XCTAssertTrue(promptToggle.waitForExistence(timeout: 5))
+    promptToggle.click()
+    let expandedPrompt = CompletedRunPrompt(containing: "completed-review-turn", in: app)
+    XCTAssertTrue(
+      WaitForStringValueContaining(
+        of: expandedPrompt, text: "Confirm this sixth review line appears only after expansion."))
 
     NSPasteboard.general.clearContents()
     let copyButton = app.buttons.matching(
@@ -813,6 +926,17 @@ final class MenuBarUISmokeTests: XCTestCase {
     ).firstMatch
   }
 
+  private func CompletedRunPromptToggle(
+    containing turnId: String,
+    in app: XCUIApplication
+  ) -> XCUIElement {
+    app.buttons.matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+        "turn.completedRun.promptSection.", turnId)
+    ).firstMatch
+  }
+
   private func WaitForStringValue(
     of element: XCUIElement,
     equals expected: String,
@@ -859,6 +983,19 @@ final class MenuBarUISmokeTests: XCTestCase {
     let predicate = NSPredicate(format: "label != %@", initial)
     let expectation = expectation(for: predicate, evaluatedWith: element)
     return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func AssertFrame(
+    _ actual: CGRect,
+    matches expected: CGRect,
+    accuracy: CGFloat = 1,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    XCTAssertEqual(actual.minX, expected.minX, accuracy: accuracy, file: file, line: line)
+    XCTAssertEqual(actual.minY, expected.minY, accuracy: accuracy, file: file, line: line)
+    XCTAssertEqual(actual.width, expected.width, accuracy: accuracy, file: file, line: line)
+    XCTAssertEqual(actual.height, expected.height, accuracy: accuracy, file: file, line: line)
   }
 
   private func WaitForNonExistence(of element: XCUIElement, timeout: TimeInterval = 5) -> Bool {

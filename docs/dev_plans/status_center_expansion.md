@@ -163,6 +163,7 @@ Track daemon-side work in `codex-rs/codexd/docs/dev_plans/menubar_status_hub_pre
 - Runtime detail panes render transient turn IDs as meaningful status text. Post-turn review panes show the review target as the previous completed turn instead of exposing the session-local parent turn ID.
 - Post-turn review runtime panels resolve delegate token updates by `turnKey`, and de-dupe completion history when `runtimeUpsert` removes the active delegate before the forwarded `turn/completed` notification.
 - Runtime detail sections use disclosure cards consistently for prompt, details, token usage, session totals, errors, plan, files, commands, and completed turns.
+- Runtime detail prompt cards show five logical prompt lines by default, expand/refold inline, and keep full-prompt copy available while folded.
 - Runtime detail panes page through longer plan, active-turn file, command, recent-run, expanded-run file/command, and expanded-run token histories with newest/older controls instead of truncating the only visible slice.
 - The UI remains read-only for daemon/runtime state; control actions are still gated on future runtime capabilities.
 - The daemon prerequisite plan has started with `codexd/hello`, summary-oriented `codexd/runtime/updateState`, and broader notification relay.

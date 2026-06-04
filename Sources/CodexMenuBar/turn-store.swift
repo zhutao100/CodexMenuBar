@@ -1044,7 +1044,8 @@ final class TurnStore {
       let activeTurn = activeTurnByEndpoint[endpointId]
       let metadata = metadataByEndpoint[endpointId]
       let isActive = activeTurn != nil
-      let promptPreview = isActive ? activeTurn?.promptPreview : metadata?.promptPreview
+      let promptPreview =
+        isActive ? activeTurn?.promptPreview ?? metadata?.promptPreview : metadata?.promptPreview
       let cwd = isActive ? activeTurn?.cwd ?? metadata?.cwd : metadata?.cwd
       let model = isActive ? activeTurn?.model ?? metadata?.model : metadata?.model
       let modelProvider =

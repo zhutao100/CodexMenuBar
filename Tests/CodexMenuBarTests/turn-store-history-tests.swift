@@ -577,6 +577,34 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].promptPreview, "Snapshot prompt preview")
   }
 
+  func testActiveRowFallsBackToSnapshotPromptBeforeTurnMetadataArrives() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.ApplyThreadSnapshot(
+      endpointId: "ep-1",
+      thread: [
+        "id": "thread-1",
+        "turns": [
+          [
+            "id": "turn-1",
+            "promptPreview": "Snapshot prompt before forwarded active metadata",
+          ]
+        ],
+      ],
+      at: start
+    )
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      at: start.addingTimeInterval(1)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].promptPreview, "Snapshot prompt before forwarded active metadata")
+  }
+
   func testSessionTokenUsageAggregatesLatestThreadTotals() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)

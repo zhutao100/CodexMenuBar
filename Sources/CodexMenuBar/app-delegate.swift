@@ -413,6 +413,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let now = Date()
     let startedAt = now.addingTimeInterval(-96)
     let cwd = NSHomeDirectory().appending("/workspace/agentic-tools/CodexMenuBar")
+    let activePrompt = """
+      Polish the active turn menu bar panel and make the settings window compact.
+      Keep the status header controls discoverable on hover.
+      Make runtime expansion feel steady in the popover.
+      Center collapsed status center runtime icons.
+      Show five prompt lines by default.
+      Reveal this sixth active prompt line only after expansion.
+      Keep the prompt foldable again after review.
+      """
 
     settingsModel.connectionState = .connected
     model.connectionState = .connected
@@ -494,8 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "items": [
               [
                 "type": "user_message",
-                "content":
-                  "Polish the active turn menu bar panel and make the settings window compact.",
+                "content": activePrompt,
               ]
             ],
           ]
@@ -505,6 +513,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     turnStore.UpsertTurnStarted(
       endpointId: endpointId, threadId: threadId, turnId: turnId, at: startedAt)
+    turnStore.UpdateTurnMetadata(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      turn: [
+        "promptPreview": activePrompt,
+        "model": "gpt-5-codex",
+        "modelProvider": "OpenAI",
+        "thinkingLevel": "medium",
+      ],
+      at: startedAt.addingTimeInterval(1)
+    )
     turnStore.RecordProgress(
       endpointId: endpointId,
       threadId: threadId,
@@ -705,11 +725,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       Exercise completed-turn token usage history controls.
       Verify the regular completion prompt comes from the codexd completion payload.
       Line three must remain visible in expanded history.
+      Line four should remain in the folded prompt.
+      Line five should remain in the folded prompt.
+      Line six should appear only after expanding the completed prompt.
+      Line seven verifies the prompt can fold again.
       """
     let reviewPrompt = """
       Review the completed turn for regressions.
-      Confirm the prompt view is not limited to two lines.
+      Confirm the folded prompt starts with five lines.
+      Confirm the prompt view can expand to the full text.
       Confirm copying the entire prompt remains available.
+      Confirm line five remains visible before expansion.
+      Confirm this sixth review line appears only after expansion.
+      Confirm the prompt can be folded after expansion.
       """
 
     settingsModel.connectionState = .connected

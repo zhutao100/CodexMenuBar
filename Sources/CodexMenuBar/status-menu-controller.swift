@@ -15,6 +15,7 @@ private enum StatusMenuLayout {
   static let contentWidth: CGFloat = popoverWidth - (outerPadding * 2)
   static let activeListMaxHeight: CGFloat = 388
   static let headerActionButtonSize: CGFloat = 26
+  static let headerActionHelpMaxWidth: CGFloat = 220
 }
 
 @MainActor
@@ -563,7 +564,9 @@ private struct StatusDropdownView: View {
           onOpenSettings: onOpenSettings,
           onQuit: onQuit
         )
+        .zIndex(2)
       }
+      .zIndex(2)
 
       Divider()
 
@@ -615,7 +618,11 @@ private struct StatusDropdownView: View {
                 now: model.now,
                 isExpanded: model.expandedEndpointIds.contains(endpointRow.endpointId),
                 expandedRunKeys: model.expandedRunKeysByEndpoint[endpointRow.endpointId] ?? [],
-                onToggle: { model.ToggleEndpoint(endpointRow.endpointId) },
+                onToggle: {
+                  withAnimation(RuntimePanelExpansionAnimation) {
+                    model.ToggleEndpoint(endpointRow.endpointId)
+                  }
+                },
                 onToggleHistoryRun: { runKey in
                   model.ToggleRun(endpointId: endpointRow.endpointId, runKey: runKey)
                 },
@@ -689,40 +696,86 @@ private struct StatusDropdownHeaderActions: View {
   let onOpenSettings: () -> Void
   let onQuit: () -> Void
 
+  @State private var hoveredHelpText: String?
+
   var body: some View {
     HStack(spacing: 4) {
       StatusDropdownHeaderButton(
         title: "Reconnect codexd",
+        helpText: "Reconnect to codexd and refresh all runtime state",
         systemImage: "arrow.clockwise",
         accessibilityIdentifier: "status.reconnect",
+        onHoverChange: UpdateHoveredHelpText,
         action: onReconnectAll
       )
       StatusDropdownHeaderButton(
         title: "Status Center",
+        helpText: "Open the persistent Status Center window",
         systemImage: "rectangle.3.group",
         accessibilityIdentifier: "status.statusCenter",
+        onHoverChange: UpdateHoveredHelpText,
         action: onOpenStatusCenter
       )
       StatusDropdownHeaderButton(
         title: "Settings",
+        helpText: "Open CodexMenuBar settings",
         systemImage: "gearshape",
         accessibilityIdentifier: "status.settings",
+        onHoverChange: UpdateHoveredHelpText,
         action: onOpenSettings
       )
       StatusDropdownHeaderButton(
         title: "Quit CodexMenuBar",
+        helpText: "Quit CodexMenuBar",
         systemImage: "power",
         accessibilityIdentifier: "status.quit",
+        onHoverChange: UpdateHoveredHelpText,
         action: onQuit
       )
+    }
+    .overlay(alignment: .topTrailing) {
+      if let hoveredHelpText {
+        Text(hoveredHelpText)
+          .font(.system(size: 10, weight: .medium))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .truncationMode(.tail)
+          .padding(.horizontal, 7)
+          .padding(.vertical, 4)
+          .frame(width: StatusMenuLayout.headerActionHelpMaxWidth, alignment: .trailing)
+          .background(
+            Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 5)
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: 5)
+              .stroke(Color(nsColor: NSColor.separatorColor).opacity(0.35), lineWidth: 0.5)
+          )
+          .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+          .offset(y: StatusMenuLayout.headerActionButtonSize + 5)
+          .allowsHitTesting(false)
+          .accessibilityLabel(hoveredHelpText)
+          .accessibilityIdentifier("status.headerActionHoverHelp")
+          .zIndex(2)
+      }
+    }
+    .animation(.easeInOut(duration: 0.12), value: hoveredHelpText)
+  }
+
+  private func UpdateHoveredHelpText(_ helpText: String, isHovering: Bool) {
+    if isHovering {
+      hoveredHelpText = helpText
+    } else if hoveredHelpText == helpText {
+      hoveredHelpText = nil
     }
   }
 }
 
 private struct StatusDropdownHeaderButton: View {
   let title: String
+  let helpText: String
   let systemImage: String
   let accessibilityIdentifier: String
+  let onHoverChange: (String, Bool) -> Void
   let action: () -> Void
 
   var body: some View {
@@ -737,8 +790,12 @@ private struct StatusDropdownHeaderButton: View {
     }
     .buttonStyle(.borderless)
     .controlSize(.small)
-    .help(title)
+    .help(helpText)
     .accessibilityLabel(title)
+    .accessibilityHint(helpText)
     .accessibilityIdentifier(accessibilityIdentifier)
+    .onHover { isHovering in
+      onHoverChange(helpText, isHovering)
+    }
   }
 }

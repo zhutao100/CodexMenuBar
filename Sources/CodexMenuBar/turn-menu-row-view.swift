@@ -9,6 +9,42 @@ private enum RuntimeHistoryPageSize {
   static let runs = 5
 }
 
+let RuntimePanelExpansionAnimation = Animation.easeInOut(duration: 0.18)
+
+struct PromptDisclosurePreview: Equatable {
+  static let defaultFoldedLineCount = 5
+
+  let text: String
+  let foldedLineCount: Int
+
+  init(text: String, foldedLineCount: Int = Self.defaultFoldedLineCount) {
+    self.text = text
+    self.foldedLineCount = foldedLineCount
+  }
+
+  var isExpandable: Bool {
+    lines.count > foldedLineCount
+  }
+
+  func VisibleText(isExpanded: Bool) -> String {
+    guard !isExpanded, isExpandable else {
+      return text
+    }
+    return lines.prefix(max(0, foldedLineCount)).joined(separator: "\n")
+  }
+
+  private var lines: [String] {
+    var normalized =
+      text
+      .replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+    if normalized.hasSuffix("\n") {
+      normalized.removeLast()
+    }
+    return normalized.components(separatedBy: "\n")
+  }
+}
+
 private struct RuntimeHistoryPage<Item> {
   let items: [Item]
   let page: Int
@@ -173,7 +209,7 @@ struct TurnMenuRowView: View {
   @State private var fileHistoryPage = 0
   @State private var commandHistoryPage = 0
   @State private var runHistoryPage = 0
-  @State private var isPromptSectionExpanded = true
+  @State private var isPromptExpanded = false
   @State private var isDetailsSectionExpanded = true
   @State private var isTokenUsageSectionExpanded = true
   @State private var isThreadTokenSectionExpanded = true
@@ -254,7 +290,7 @@ struct TurnMenuRowView: View {
 
       if isExpanded {
         ExpandedBody
-          .transition(.opacity.combined(with: .move(edge: .top)))
+          .transition(.opacity)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -287,35 +323,27 @@ struct TurnMenuRowView: View {
     .onChange(of: endpointRow.turnKey ?? "") { _, _ in
       ResetHistorySelections()
     }
-    .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isExpanded)
+    .animation(RuntimePanelExpansionAnimation, value: isExpanded)
   }
 
   @ViewBuilder
   private var ExpandedBody: some View {
     VStack(alignment: .leading, spacing: 10) {
       if let prompt = PromptDisplayText() {
-        AccordionSectionCard(
+        PromptDisclosureCard(
           title: "Prompt",
           systemImage: "text.bubble.fill",
+          prompt: prompt,
+          unavailableText: "Prompt unavailable",
+          isExpanded: $isPromptExpanded,
           accessibilityIdentifier: "turn.promptSection.\(endpointRow.endpointId)",
-          isExpanded: isPromptSectionExpanded,
-          onToggle: { isPromptSectionExpanded.toggle() }
-        ) {
-          VStack(alignment: .leading, spacing: 5) {
-            Text(prompt)
-              .font(.system(size: 10))
-              .foregroundStyle(.secondary)
-              .lineLimit(2)
-
-            Button(action: { CopyToClipboard(prompt) }) {
-              Label("Copy prompt", systemImage: "doc.on.doc")
-                .font(.system(size: 9, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Copy prompt")
-            .help("Copy prompt")
-          }
-        }
+          textAccessibilityIdentifier: "turn.prompt.\(endpointRow.endpointId)",
+          copyAccessibilityIdentifier: "turn.copyPrompt.\(endpointRow.endpointId)",
+          copyButtonTitle: "Copy prompt",
+          copyAccessibilityLabel: "Copy prompt",
+          copyHelp: "Copy prompt",
+          onCopy: CopyToClipboard
+        )
       }
 
       if HasGitOrModelInfo() {
@@ -1056,7 +1084,7 @@ struct TurnMenuRowView: View {
     fileHistoryPage = 0
     commandHistoryPage = 0
     runHistoryPage = 0
-    isPromptSectionExpanded = true
+    isPromptExpanded = false
     isDetailsSectionExpanded = true
     isTokenUsageSectionExpanded = true
     isThreadTokenSectionExpanded = true
@@ -1672,33 +1700,25 @@ private struct CompletedRunPromptView: View {
   let run: CompletedRun
   let onCopy: (String) -> Void
 
+  @State private var isPromptExpanded = false
+
   var body: some View {
-    SectionCard {
-      HStack(spacing: 6) {
-        Label("Prompt", systemImage: "text.bubble.fill")
-          .font(.system(size: 9, weight: .semibold))
-          .foregroundStyle(.tertiary)
-
-        Spacer(minLength: 4)
-
-        if let prompt = PromptText {
-          Button(action: { onCopy(prompt) }) {
-            Label("Copy prompt", systemImage: "doc.on.doc")
-              .font(.system(size: 9, weight: .semibold))
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel("Copy completed turn prompt")
-          .accessibilityIdentifier("turn.completedRun.copyPrompt.\(run.runKey)")
-          .help("Copy completed turn prompt")
-        }
-      }
-    } content: {
-      Text(PromptText ?? "Prompt unavailable")
-        .font(.system(size: 10))
-        .foregroundStyle(.secondary)
-        .lineLimit(nil)
-        .textSelection(.enabled)
-        .accessibilityIdentifier("turn.completedRun.prompt.\(run.runKey)")
+    PromptDisclosureCard(
+      title: "Prompt",
+      systemImage: "text.bubble.fill",
+      prompt: PromptText,
+      unavailableText: "Prompt unavailable",
+      isExpanded: $isPromptExpanded,
+      accessibilityIdentifier: "turn.completedRun.promptSection.\(run.runKey)",
+      textAccessibilityIdentifier: "turn.completedRun.prompt.\(run.runKey)",
+      copyAccessibilityIdentifier: "turn.completedRun.copyPrompt.\(run.runKey)",
+      copyButtonTitle: "Copy prompt",
+      copyAccessibilityLabel: "Copy completed turn prompt",
+      copyHelp: "Copy completed turn prompt",
+      onCopy: onCopy
+    )
+    .onChange(of: run.runKey) { _, _ in
+      isPromptExpanded = false
     }
   }
 
@@ -1709,6 +1729,80 @@ private struct CompletedRunPromptView: View {
       return nil
     }
     return prompt
+  }
+}
+
+private struct PromptDisclosureCard: View {
+  let title: String
+  let systemImage: String
+  let prompt: String?
+  let unavailableText: String
+  @Binding var isExpanded: Bool
+  let accessibilityIdentifier: String
+  let textAccessibilityIdentifier: String
+  let copyAccessibilityIdentifier: String
+  let copyButtonTitle: String
+  let copyAccessibilityLabel: String
+  let copyHelp: String
+  let onCopy: (String) -> Void
+
+  var body: some View {
+    let preview = PromptPreview
+    SectionCard {
+      HStack(spacing: 6) {
+        Label(title, systemImage: systemImage)
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(.tertiary)
+
+        Spacer(minLength: 4)
+
+        if let preview, preview.isExpandable {
+          Button(action: TogglePrompt) {
+            Label(isExpanded ? "Fold prompt" : "Show full prompt", systemImage: "text.alignleft")
+              .font(.system(size: 9, weight: .semibold))
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel(isExpanded ? "Fold prompt" : "Show full prompt")
+          .accessibilityIdentifier(accessibilityIdentifier)
+          .help(isExpanded ? "Show the first five prompt lines" : "Show the full prompt")
+        }
+
+        if let prompt {
+          Button(action: { onCopy(prompt) }) {
+            Label(copyButtonTitle, systemImage: "doc.on.doc")
+              .font(.system(size: 9, weight: .semibold))
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel(copyAccessibilityLabel)
+          .accessibilityIdentifier(copyAccessibilityIdentifier)
+          .help(copyHelp)
+        }
+      }
+    } content: {
+      Text(VisiblePromptText(preview: preview))
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+        .lineLimit(nil)
+        .textSelection(.enabled)
+        .accessibilityIdentifier(textAccessibilityIdentifier)
+    }
+  }
+
+  private var PromptPreview: PromptDisclosurePreview? {
+    guard let prompt else {
+      return nil
+    }
+    return PromptDisclosurePreview(text: prompt)
+  }
+
+  private func VisiblePromptText(preview: PromptDisclosurePreview?) -> String {
+    preview?.VisibleText(isExpanded: isExpanded) ?? unavailableText
+  }
+
+  private func TogglePrompt() {
+    withAnimation(.easeInOut(duration: 0.12)) {
+      isExpanded.toggle()
+    }
   }
 }
 
