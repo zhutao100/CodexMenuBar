@@ -208,6 +208,21 @@ final class TurnStore {
     }
   }
 
+  private func ThreadTokenUsageBaseline(
+    in metadata: EndpointMetadata?,
+    threadId: String?,
+    turnKey: String?
+  ) -> TokenUsageInfo? {
+    guard let metadata,
+      let key = SessionThreadUsageKey(threadId: threadId, turnKey: turnKey, turnId: nil),
+      let usage = metadata.sessionTokenUsageByThread[key]?.usage,
+      usage.isTurnRoundUsage
+    else {
+      return nil
+    }
+    return usage
+  }
+
   private func SessionTokenUsage(from metadata: EndpointMetadata?) -> SessionTokenUsageSummary? {
     guard let metadata else {
       return nil
@@ -232,10 +247,23 @@ final class TurnStore {
     )
   }
 
-  private func AggregateTurnTokenUsage(
+  private func CompletedTurnTokenUsageTotal(
+    cumulative: TokenUsageInfo?,
+    baseline: TokenUsageInfo?,
     samples: [TokenUsageSample],
     fallback: TokenUsageInfo?
   ) -> TokenUsageInfo? {
+    if let cumulative, cumulative.isTurnRoundUsage {
+      if let baseline {
+        let turnScoped = cumulative.subtracting(baseline)
+        if turnScoped.isTurnRoundUsage {
+          return turnScoped
+        }
+      } else {
+        return cumulative
+      }
+    }
+
     let roundUsages = samples.map(\.usage).filter(\.isTurnRoundUsage)
     if roundUsages.isEmpty {
       guard let fallback, fallback.isTurnRoundUsage else {
@@ -253,7 +281,13 @@ final class TurnStore {
       total.totalTokens += usage.totalTokens
       total.contextWindow = usage.contextWindow ?? total.contextWindow
     }
-    return total.totalTokens > 0 ? total : nil
+    guard total.totalTokens > 0 else {
+      return nil
+    }
+    if let fallback, fallback.isTurnRoundUsage, fallback.totalTokens > total.totalTokens {
+      return fallback
+    }
+    return total
   }
 
   func UpdateRuntimeMetadata(endpointId: String, cwd: String?, sessionSource: String?) {
@@ -268,6 +302,7 @@ final class TurnStore {
     threadId: String?,
     turnId: String,
     turnKey: String? = nil,
+    tokenUsageCumulativeBaseline: TokenUsageInfo? = nil,
     at now: Date
   ) {
     let key = ResolveLocalTurnKey(
@@ -276,6 +311,12 @@ final class TurnStore {
       existing.ApplyStatus(.inProgress, at: now)
       existing.UpdateThreadId(threadId)
       existing.UpdateTurnKey(turnKey)
+      let baseline =
+        tokenUsageCumulativeBaseline
+        ?? ThreadTokenUsageBaseline(
+          in: metadataByEndpoint[endpointId], threadId: threadId, turnKey: turnKey)
+      existing.SetTokenUsageCumulativeBaselineIfMissing(
+        baseline)
       SeedTokenUsageSamplesIfNeeded(
         into: existing, endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId
       )
@@ -284,8 +325,18 @@ final class TurnStore {
         at: now)
       return
     }
+    let baseline =
+      tokenUsageCumulativeBaseline
+      ?? ThreadTokenUsageBaseline(
+        in: metadataByEndpoint[endpointId], threadId: threadId, turnKey: turnKey)
     let turn = ActiveTurn(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, startedAt: now)
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      turnKey: turnKey,
+      startedAt: now,
+      tokenUsageCumulativeBaseline: baseline
+    )
     SeedTokenUsageSamplesIfNeeded(
       into: turn, endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     turnsByKey[key] = turn
@@ -630,6 +681,7 @@ final class TurnStore {
       threadName: threadName ?? run.threadName,
       tokenUsage: run.tokenUsage,
       tokenUsageTotal: run.tokenUsageTotal,
+      tokenUsageCumulativeBaseline: run.tokenUsageCumulativeBaseline,
       tokenUsageSamples: run.tokenUsageSamples,
       fileChanges: run.fileChanges,
       commands: run.commands,
@@ -714,7 +766,9 @@ final class TurnStore {
     var runTokenUsageSamples = run.tokenUsageSamples
     AppendTokenUsageRoundSample(runTokenUsage, at: observedAt, to: &runTokenUsageSamples)
     let updatedRunTokenUsage = runTokenUsage.isTurnRoundUsage ? runTokenUsage : run.tokenUsage
-    let updatedRunTokenUsageTotal = AggregateTurnTokenUsage(
+    let updatedRunTokenUsageTotal = CompletedTurnTokenUsageTotal(
+      cumulative: tokenUsageTotal,
+      baseline: run.tokenUsageCumulativeBaseline,
       samples: runTokenUsageSamples,
       fallback: updatedRunTokenUsage ?? run.tokenUsageTotal
     )
@@ -739,6 +793,7 @@ final class TurnStore {
       threadName: run.threadName,
       tokenUsage: updatedRunTokenUsage,
       tokenUsageTotal: updatedRunTokenUsageTotal,
+      tokenUsageCumulativeBaseline: run.tokenUsageCumulativeBaseline,
       tokenUsageSamples: runTokenUsageSamples,
       fileChanges: run.fileChanges,
       commands: run.commands,
@@ -1065,15 +1120,21 @@ final class TurnStore {
 
     var runs = completedRunsByEndpoint[turn.endpointId] ?? []
     let metadata = metadataByEndpoint[turn.endpointId]
-    let metadataTokenSamples =
+    let metadataMatchesTurn =
       metadata.map {
         MetadataMatchesTurn($0, turnKey: turn.turnKey, threadId: turn.threadId, turnId: turn.turnId)
-      } == true ? metadata?.tokenUsageSamples ?? [] : []
+      } == true
+    let metadataTokenSamples = metadataMatchesTurn ? metadata?.tokenUsageSamples ?? [] : []
     let tokenUsageSamples =
       turn.tokenUsageSamples.isEmpty ? metadataTokenSamples : turn.tokenUsageSamples
     let tokenUsage =
       tokenUsageSamples.last?.usage ?? turn.tokenUsageLast ?? metadata?.tokenUsageLast
-    let tokenUsageTotal = AggregateTurnTokenUsage(samples: tokenUsageSamples, fallback: tokenUsage)
+    let tokenUsageTotal = CompletedTurnTokenUsageTotal(
+      cumulative: turn.tokenUsageTotal ?? (metadataMatchesTurn ? metadata?.tokenUsageTotal : nil),
+      baseline: turn.tokenUsageCumulativeBaseline,
+      samples: tokenUsageSamples,
+      fallback: tokenUsage
+    )
     runs.insert(
       CompletedRun(
         endpointId: turn.endpointId,
@@ -1096,6 +1157,7 @@ final class TurnStore {
         threadName: turn.threadName ?? metadata?.threadName,
         tokenUsage: tokenUsage?.isTurnRoundUsage == true ? tokenUsage : nil,
         tokenUsageTotal: tokenUsageTotal,
+        tokenUsageCumulativeBaseline: turn.tokenUsageCumulativeBaseline,
         tokenUsageSamples: tokenUsageSamples,
         fileChanges: turn.fileChanges,
         commands: turn.commands,

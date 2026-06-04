@@ -202,6 +202,332 @@ final class TurnStoreHistoryTests: XCTestCase {
       ])
   }
 
+  func testCompletedRunUsesCumulativeTotalAcrossContextCompaction() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let second = start.addingTimeInterval(8)
+    let third = start.addingTimeInterval(16)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    var firstRound = TokenUsageInfo()
+    firstRound.totalTokens = 8_100
+    firstRound.inputTokens = 7_200
+    firstRound.cachedInputTokens = 2_600
+    firstRound.outputTokens = 900
+    firstRound.reasoningTokens = 240
+
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: firstRound,
+      tokenUsageLast: firstRound,
+      observedAt: second
+    )
+
+    var postCompactionRound = TokenUsageInfo()
+    postCompactionRound.totalTokens = 18_000
+    postCompactionRound.inputTokens = 15_600
+    postCompactionRound.cachedInputTokens = 5_900
+    postCompactionRound.outputTokens = 2_400
+    postCompactionRound.reasoningTokens = 870
+
+    var cumulativeAfterCompaction = TokenUsageInfo()
+    cumulativeAfterCompaction.totalTokens = 82_500
+    cumulativeAfterCompaction.inputTokens = 70_400
+    cumulativeAfterCompaction.cachedInputTokens = 23_000
+    cumulativeAfterCompaction.outputTokens = 12_100
+    cumulativeAfterCompaction.reasoningTokens = 4_200
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: cumulativeAfterCompaction,
+      tokenUsageLast: postCompactionRound,
+      observedAt: third
+    )
+
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: .completed,
+      at: third.addingTimeInterval(2)
+    )
+
+    let completedRun = store.EndpointRows(activeEndpointIds: ["ep-1"])[0].recentRuns[0]
+    XCTAssertEqual(completedRun.tokenUsage, postCompactionRound)
+    XCTAssertEqual(completedRun.tokenUsageTotal, cumulativeAfterCompaction)
+    XCTAssertEqual(completedRun.tokenUsageSamples.map(\.usage), [firstRound, postCompactionRound])
+  }
+
+  func testArchivedCompletedRunUsesLateCumulativeTotalAcrossContextCompaction() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    var firstRound = TokenUsageInfo()
+    firstRound.totalTokens = 8_100
+    firstRound.inputTokens = 7_200
+    firstRound.cachedInputTokens = 2_600
+    firstRound.outputTokens = 900
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: firstRound,
+      tokenUsageLast: firstRound,
+      observedAt: start.addingTimeInterval(1)
+    )
+
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: .completed,
+      at: start.addingTimeInterval(2)
+    )
+
+    var postCompactionRound = TokenUsageInfo()
+    postCompactionRound.totalTokens = 18_000
+    postCompactionRound.inputTokens = 15_600
+    postCompactionRound.cachedInputTokens = 5_900
+    postCompactionRound.outputTokens = 2_400
+
+    var cumulativeAfterCompaction = TokenUsageInfo()
+    cumulativeAfterCompaction.totalTokens = 82_500
+    cumulativeAfterCompaction.inputTokens = 70_400
+    cumulativeAfterCompaction.cachedInputTokens = 23_000
+    cumulativeAfterCompaction.outputTokens = 12_100
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: cumulativeAfterCompaction,
+      tokenUsageLast: postCompactionRound,
+      observedAt: start.addingTimeInterval(3)
+    )
+
+    let completedRun = store.EndpointRows(activeEndpointIds: ["ep-1"])[0].recentRuns[0]
+    XCTAssertEqual(completedRun.tokenUsage, postCompactionRound)
+    XCTAssertEqual(completedRun.tokenUsageTotal, cumulativeAfterCompaction)
+    XCTAssertEqual(completedRun.tokenUsageSamples.map(\.usage), [firstRound, postCompactionRound])
+  }
+
+  func testCompletedRunUsesCumulativeDeltaAfterPriorSameThreadTurns() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    var priorTurnTotal = TokenUsageInfo()
+    priorTurnTotal.totalTokens = 100_000
+    priorTurnTotal.inputTokens = 86_000
+    priorTurnTotal.cachedInputTokens = 32_000
+    priorTurnTotal.outputTokens = 14_000
+    priorTurnTotal.reasoningTokens = 5_000
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: priorTurnTotal,
+      tokenUsageLast: priorTurnTotal,
+      observedAt: start.addingTimeInterval(1)
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: .completed,
+      at: start.addingTimeInterval(2)
+    )
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      at: start.addingTimeInterval(3)
+    )
+
+    var postCompactionRound = TokenUsageInfo()
+    postCompactionRound.totalTokens = 18_000
+    postCompactionRound.inputTokens = 15_600
+    postCompactionRound.cachedInputTokens = 5_900
+    postCompactionRound.outputTokens = 2_400
+    postCompactionRound.reasoningTokens = 870
+
+    var secondTurnTotal = TokenUsageInfo()
+    secondTurnTotal.totalTokens = 82_500
+    secondTurnTotal.inputTokens = 70_400
+    secondTurnTotal.cachedInputTokens = 23_000
+    secondTurnTotal.outputTokens = 12_100
+    secondTurnTotal.reasoningTokens = 4_200
+    let threadCumulativeTotal = priorTurnTotal.adding(secondTurnTotal)
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      tokenUsageTotal: threadCumulativeTotal,
+      tokenUsageLast: postCompactionRound,
+      observedAt: start.addingTimeInterval(4)
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      status: .completed,
+      at: start.addingTimeInterval(5)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(rows[0].recentRuns.map(\.turnId), ["turn-2", "turn-1"])
+    XCTAssertEqual(rows[0].recentRuns[0].tokenUsage, postCompactionRound)
+    XCTAssertEqual(rows[0].recentRuns[0].tokenUsageTotal, secondTurnTotal)
+    XCTAssertEqual(rows[0].recentRuns[1].tokenUsageTotal, priorTurnTotal)
+  }
+
+  func testCompletedRunUsesSnapshotBaselineAfterReconnect() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    var priorThreadTotal = TokenUsageInfo()
+    priorThreadTotal.totalTokens = 100_000
+    priorThreadTotal.inputTokens = 86_000
+    priorThreadTotal.cachedInputTokens = 32_000
+    priorThreadTotal.outputTokens = 14_000
+    priorThreadTotal.reasoningTokens = 5_000
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      turnKey: "thread-1:turn-2",
+      tokenUsageCumulativeBaseline: priorThreadTotal,
+      at: start
+    )
+
+    var postCompactionRound = TokenUsageInfo()
+    postCompactionRound.totalTokens = 18_000
+    postCompactionRound.inputTokens = 15_600
+    postCompactionRound.cachedInputTokens = 5_900
+    postCompactionRound.outputTokens = 2_400
+    postCompactionRound.reasoningTokens = 870
+
+    var secondTurnTotal = TokenUsageInfo()
+    secondTurnTotal.totalTokens = 82_500
+    secondTurnTotal.inputTokens = 70_400
+    secondTurnTotal.cachedInputTokens = 23_000
+    secondTurnTotal.outputTokens = 12_100
+    secondTurnTotal.reasoningTokens = 4_200
+
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      turnKey: "thread-1:turn-2",
+      tokenUsageTotal: priorThreadTotal.adding(secondTurnTotal),
+      tokenUsageLast: postCompactionRound,
+      observedAt: start.addingTimeInterval(1)
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      turnKey: "thread-1:turn-2",
+      status: .completed,
+      at: start.addingTimeInterval(2)
+    )
+
+    let latestRun = store.EndpointRows(activeEndpointIds: ["ep-1"])[0].recentRuns[0]
+    XCTAssertEqual(latestRun.tokenUsage, postCompactionRound)
+    XCTAssertEqual(latestRun.tokenUsageTotal, secondTurnTotal)
+  }
+
+  func testArchivedCompletedRunUsesLateCumulativeDeltaAfterPriorSameThreadTurns() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(endpointId: "ep-1", threadId: "thread-1", turnId: "turn-1", at: start)
+
+    var priorTurnTotal = TokenUsageInfo()
+    priorTurnTotal.totalTokens = 100_000
+    priorTurnTotal.inputTokens = 86_000
+    priorTurnTotal.cachedInputTokens = 32_000
+    priorTurnTotal.outputTokens = 14_000
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      tokenUsageTotal: priorTurnTotal,
+      tokenUsageLast: priorTurnTotal,
+      observedAt: start.addingTimeInterval(1)
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: .completed,
+      at: start.addingTimeInterval(2)
+    )
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      at: start.addingTimeInterval(3)
+    )
+
+    var firstSecondTurnRound = TokenUsageInfo()
+    firstSecondTurnRound.totalTokens = 8_100
+    firstSecondTurnRound.inputTokens = 7_200
+    firstSecondTurnRound.cachedInputTokens = 2_600
+    firstSecondTurnRound.outputTokens = 900
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      tokenUsageTotal: priorTurnTotal.adding(firstSecondTurnRound),
+      tokenUsageLast: firstSecondTurnRound,
+      observedAt: start.addingTimeInterval(4)
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      status: .completed,
+      at: start.addingTimeInterval(5)
+    )
+
+    var postCompactionRound = TokenUsageInfo()
+    postCompactionRound.totalTokens = 18_000
+    postCompactionRound.inputTokens = 15_600
+    postCompactionRound.cachedInputTokens = 5_900
+    postCompactionRound.outputTokens = 2_400
+
+    var secondTurnTotal = TokenUsageInfo()
+    secondTurnTotal.totalTokens = 82_500
+    secondTurnTotal.inputTokens = 70_400
+    secondTurnTotal.cachedInputTokens = 23_000
+    secondTurnTotal.outputTokens = 12_100
+    store.UpdateTokenUsage(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-2",
+      tokenUsageTotal: priorTurnTotal.adding(secondTurnTotal),
+      tokenUsageLast: postCompactionRound,
+      observedAt: start.addingTimeInterval(6)
+    )
+
+    let latestRun = store.EndpointRows(activeEndpointIds: ["ep-1"])[0].recentRuns[0]
+    XCTAssertEqual(latestRun.turnId, "turn-2")
+    XCTAssertEqual(latestRun.tokenUsage, postCompactionRound)
+    XCTAssertEqual(latestRun.tokenUsageTotal, secondTurnTotal)
+    XCTAssertEqual(
+      latestRun.tokenUsageSamples.map(\.usage), [firstSecondTurnRound, postCompactionRound])
+  }
+
   func testCompletedRunMetadataCanBeBackfilledFromCompletionPromptPreview() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)
@@ -600,6 +926,7 @@ final class TurnStoreHistoryTests: XCTestCase {
 
     let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
     XCTAssertEqual(rows[0].recentRuns[0].tokenUsage, roundUsage)
+    XCTAssertEqual(rows[0].recentRuns[0].tokenUsageTotal, roundUsage)
     XCTAssertEqual(rows[0].recentRuns[0].tokenUsageSamples.map(\.usage), [roundUsage])
   }
 

@@ -292,7 +292,7 @@ final class MenuBarUISmokeTests: XCTestCase {
     XCTAssertTrue(WaitForStringLabelContaining(of: latestRun, text: " · latest"))
     XCTAssertFalse(CompletedRunRow(containing: "completed-history-turn-0", in: app).exists)
 
-    XCTAssertTrue(WaitForStringValueContaining(of: latestRun, text: "Tokens: 39.0k"))
+    XCTAssertTrue(WaitForStringValueContaining(of: latestRun, text: "Tokens: 82.5k"))
 
     latestRun.click()
 

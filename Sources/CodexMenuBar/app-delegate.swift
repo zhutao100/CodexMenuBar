@@ -724,8 +724,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     model.SetEndpointIds([endpointId])
     turnStore.UpdateRuntimeMetadata(endpointId: endpointId, cwd: cwd, sessionSource: "codex")
 
+    var completedHistoryThreadTotal = TokenUsageInfo()
     for index in 0..<5 {
       let turnId = "completed-history-turn-\(index)"
+      let usage = TokenUsageInfo(
+        inputTokens: 4_000 + (index * 300),
+        cachedInputTokens: 1_000 + (index * 120),
+        outputTokens: 700 + (index * 80),
+        reasoningTokens: 200 + (index * 30),
+        totalTokens: 4_700 + (index * 380),
+        contextWindow: 128_000
+      )
+      completedHistoryThreadTotal = completedHistoryThreadTotal.adding(usage)
       SeedCompletedUITestTurn(
         endpointId: endpointId,
         threadId: threadId,
@@ -733,14 +743,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         prompt: "Older completed turn \(index).",
         startedAt: now.addingTimeInterval(-7_200 + Double(index * 480)),
         endedAt: now.addingTimeInterval(-7_080 + Double(index * 480)),
-        tokenUsage: TokenUsageInfo(
-          inputTokens: 4_000 + (index * 300),
-          cachedInputTokens: 1_000 + (index * 120),
-          outputTokens: 700 + (index * 80),
-          reasoningTokens: 200 + (index * 30),
-          totalTokens: 4_700 + (index * 380),
-          contextWindow: 128_000
-        ),
+        tokenUsage: usage,
+        threadUsageTotal: completedHistoryThreadTotal,
         command: "./scripts/verify_fast.sh --older \(index)",
         changedPath: "Sources/CodexMenuBar/turn-store.swift"
       )
@@ -786,12 +790,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let latestStartedAt = now.addingTimeInterval(-900)
     let latestTurnId = "completed-history-turn-6"
     let latestTurnKey = "\(threadId):\(latestTurnId)"
-    turnStore.UpsertTurnStarted(
-      endpointId: endpointId, threadId: threadId, turnId: latestTurnId, at: latestStartedAt)
+    HandleNotification(
+      method: "turn/started",
+      params: [
+        "endpointId": endpointId,
+        "threadId": threadId,
+        "fromSnapshot": true,
+        "turn": [
+          "id": latestTurnId,
+          "key": latestTurnKey,
+          "status": "inProgress",
+          "tokenUsageBaseline": TokenUsagePayload(total: completedHistoryThreadTotal),
+        ],
+      ])
     turnStore.RecordProgress(
       endpointId: endpointId,
       threadId: threadId,
       turnId: latestTurnId,
+      turnKey: latestTurnKey,
       category: .reasoning,
       state: .started,
       label: "Reviewing implementation path",
@@ -801,6 +817,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       endpointId: endpointId,
       threadId: threadId,
       turnId: latestTurnId,
+      turnKey: latestTurnKey,
       category: .tool,
       state: .started,
       label: "Running verification",
@@ -809,6 +826,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     turnStore.RecordCommand(
       endpointId: endpointId,
       turnId: latestTurnId,
+      turnKey: latestTurnKey,
+      threadId: threadId,
       command: CommandSummary(
         command: "./scripts/verify_fast.sh",
         status: .completed,
@@ -819,6 +838,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     turnStore.RecordFileChange(
       endpointId: endpointId,
       turnId: latestTurnId,
+      turnKey: latestTurnKey,
+      threadId: threadId,
       change: FileChangeSummary(
         path: "Sources/CodexMenuBar/turn-menu-row-view.swift", kind: .update)
     )
@@ -848,20 +869,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         contextWindow: 128_000
       ),
     ]
+    let latestCumulativeTotals = [
+      completedHistoryThreadTotal.adding(
+        TokenUsageInfo(
+          inputTokens: 7_200,
+          cachedInputTokens: 2_600,
+          outputTokens: 900,
+          reasoningTokens: 240,
+          totalTokens: 8_100,
+          contextWindow: 128_000
+        )),
+      completedHistoryThreadTotal.adding(
+        TokenUsageInfo(
+          inputTokens: 18_500,
+          cachedInputTokens: 6_700,
+          outputTokens: 2_540,
+          reasoningTokens: 760,
+          totalTokens: 21_040,
+          contextWindow: 128_000
+        )),
+      completedHistoryThreadTotal.adding(
+        TokenUsageInfo(
+          inputTokens: 70_400,
+          cachedInputTokens: 23_000,
+          outputTokens: 12_100,
+          reasoningTokens: 4_200,
+          totalTokens: 82_500,
+          contextWindow: 128_000
+        )),
+    ]
     for (index, sample) in latestSamples.enumerated() {
+      if index == 2 {
+        HandleNotification(
+          method: "item/started",
+          params: [
+            "endpointId": endpointId,
+            "threadId": threadId,
+            "turnId": latestTurnId,
+            "turnKey": latestTurnKey,
+            "item": [
+              "type": "contextCompaction"
+            ],
+          ]
+        )
+        HandleNotification(
+          method: "item/completed",
+          params: [
+            "endpointId": endpointId,
+            "threadId": threadId,
+            "turnId": latestTurnId,
+            "turnKey": latestTurnKey,
+            "item": [
+              "type": "contextCompaction"
+            ],
+          ]
+        )
+      }
       turnStore.UpdateTokenUsage(
         endpointId: endpointId,
         threadId: threadId,
         turnId: latestTurnId,
-        tokenUsageTotal: index == 2
-          ? TokenUsageInfo(
-            inputTokens: 15_600,
-            cachedInputTokens: 5_900,
-            outputTokens: 2_400,
-            reasoningTokens: 870,
-            totalTokens: 18_000,
-            contextWindow: 128_000
-          ) : nil,
+        turnKey: latestTurnKey,
+        tokenUsageTotal: latestCumulativeTotals[index],
         tokenUsageLast: sample,
         observedAt: latestStartedAt.addingTimeInterval(60 + Double(index * 12))
       )
@@ -1213,6 +1282,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  private func TokenUsagePayload(total: TokenUsageInfo, last: TokenUsageInfo? = nil) -> [String:
+    Any]
+  {
+    var payload: [String: Any] = [
+      "total": TokenUsageBreakdownPayload(total)
+    ]
+    if let contextWindow = total.contextWindow ?? last?.contextWindow {
+      payload["modelContextWindow"] = contextWindow
+    }
+    if let last {
+      payload["last"] = TokenUsageBreakdownPayload(last)
+    }
+    return payload
+  }
+
+  private func TokenUsageBreakdownPayload(_ usage: TokenUsageInfo) -> [String: Any] {
+    [
+      "inputTokens": usage.inputTokens,
+      "cachedInputTokens": usage.cachedInputTokens,
+      "outputTokens": usage.outputTokens,
+      "reasoningOutputTokens": usage.reasoningTokens,
+      "totalTokens": usage.totalTokens,
+    ]
+  }
+
   private func SeedCompletedUITestTurn(
     endpointId: String,
     threadId: String,
@@ -1415,9 +1509,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let turnKey = ResolveTurnKey(params: params, turn: turn)
     let threadId = ResolveThreadId(
       params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
+    let tokenUsageCumulativeBaseline = ParseTokenUsageCumulativeBaseline(
+      turn["tokenUsageBaseline"] ?? turn["token_usage_baseline"])
     turnStore.ClearError(endpointId: endpointId)
     turnStore.UpsertTurnStarted(
-      endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, at: Date())
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId,
+      turnKey: turnKey,
+      tokenUsageCumulativeBaseline: tokenUsageCumulativeBaseline,
+      at: Date())
     turnStore.UpdateTurnMetadata(
       endpointId: endpointId, threadId: threadId, turnId: turnId, turnKey: turnKey, turn: turn,
       at: Date())
@@ -1722,6 +1823,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       tokenUsageTotal: parsedUsage.total,
       tokenUsageLast: parsedUsage.last
     )
+  }
+
+  private func ParseTokenUsageCumulativeBaseline(_ payload: Any?) -> TokenUsageInfo? {
+    guard let usage = payload as? [String: Any] else {
+      return nil
+    }
+    return ParseThreadTokenUsage(usage).total
   }
 
   private func ParseThreadTokenUsage(_ usage: [String: Any]) -> (

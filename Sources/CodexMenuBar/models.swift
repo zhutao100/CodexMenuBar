@@ -98,6 +98,28 @@ struct TokenUsageInfo: Equatable {
   var isTurnRoundUsage: Bool {
     totalTokens > 0 && hasBreakdown
   }
+
+  func adding(_ usage: TokenUsageInfo) -> TokenUsageInfo {
+    TokenUsageInfo(
+      inputTokens: inputTokens + usage.inputTokens,
+      cachedInputTokens: cachedInputTokens + usage.cachedInputTokens,
+      outputTokens: outputTokens + usage.outputTokens,
+      reasoningTokens: reasoningTokens + usage.reasoningTokens,
+      totalTokens: totalTokens + usage.totalTokens,
+      contextWindow: usage.contextWindow ?? contextWindow
+    )
+  }
+
+  func subtracting(_ baseline: TokenUsageInfo) -> TokenUsageInfo {
+    TokenUsageInfo(
+      inputTokens: max(0, inputTokens - baseline.inputTokens),
+      cachedInputTokens: max(0, cachedInputTokens - baseline.cachedInputTokens),
+      outputTokens: max(0, outputTokens - baseline.outputTokens),
+      reasoningTokens: max(0, reasoningTokens - baseline.reasoningTokens),
+      totalTokens: max(0, totalTokens - baseline.totalTokens),
+      contextWindow: contextWindow
+    )
+  }
 }
 
 struct TokenUsageSample: Equatable {
@@ -325,6 +347,7 @@ struct CompletedRun: Equatable {
   let threadName: String?
   let tokenUsage: TokenUsageInfo?
   let tokenUsageTotal: TokenUsageInfo?
+  let tokenUsageCumulativeBaseline: TokenUsageInfo?
   let tokenUsageSamples: [TokenUsageSample]
   let fileChanges: [FileChangeSummary]
   let commands: [CommandSummary]
@@ -384,6 +407,7 @@ final class ActiveTurn {
   private(set) var threadName: String?
   private(set) var tokenUsageTotal: TokenUsageInfo?
   private(set) var tokenUsageLast: TokenUsageInfo?
+  private(set) var tokenUsageCumulativeBaseline: TokenUsageInfo?
   private var categoryCounts: [ProgressCategory: Int]
   private var seenCategories: [ProgressCategory]
   private(set) var traceHistory: [ProgressTraceSnapshot]
@@ -393,12 +417,20 @@ final class ActiveTurn {
   private(set) var planExplanation: String?
   private(set) var tokenUsageSamples: [TokenUsageSample] = []
 
-  init(endpointId: String, threadId: String?, turnId: String, turnKey: String?, startedAt: Date) {
+  init(
+    endpointId: String,
+    threadId: String?,
+    turnId: String,
+    turnKey: String?,
+    startedAt: Date,
+    tokenUsageCumulativeBaseline: TokenUsageInfo? = nil
+  ) {
     self.endpointId = endpointId
     self.threadId = threadId
     self.turnKey = turnKey
     self.turnId = turnId
     self.startedAt = startedAt
+    self.tokenUsageCumulativeBaseline = tokenUsageCumulativeBaseline
     self.status = .inProgress
     self.endedAt = nil
     self.latestLabel = nil
@@ -428,6 +460,13 @@ final class ActiveTurn {
       return
     }
     self.turnKey = turnKey
+  }
+
+  func SetTokenUsageCumulativeBaselineIfMissing(_ baseline: TokenUsageInfo?) {
+    guard tokenUsageCumulativeBaseline == nil, let baseline else {
+      return
+    }
+    tokenUsageCumulativeBaseline = baseline
   }
 
   func UpdateMetadata(

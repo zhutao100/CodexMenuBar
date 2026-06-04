@@ -307,10 +307,15 @@ prod = connect()
 runtime_id = "rt-e2e"
 thread_id = "thread-e2e"
 turn_id = "turn-e2e"
+compacted_turn_id = "turn-e2e-compact"
+compacted_turn_key = f"{thread_id}:{compacted_turn_id}"
 regular_prompt = "Regular prompt carried by the completion notification"
+regular_prior_total_tokens = 43000
+regular_compacted_cumulative_total_tokens = 125500
 delegate_thread_id = "thread-e2e-review"
 delegate_turn_id = "0"
 delegate_turn_key = f"{delegate_thread_id}:{delegate_turn_id}"
+delegate_cumulative_total_tokens = 82500
 
 send_line(prod, {
   "id": 1,
@@ -428,6 +433,38 @@ send_line(prod, {
   "params": {
     "runtimeId": runtime_id,
     "notification": {
+      "method": "thread/tokenUsage/updated",
+      "params": {
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "turnKey": f"{thread_id}:{turn_id}",
+        "tokenUsage": {
+          "modelContextWindow": 128000,
+          "last": {
+            "inputTokens": 14000,
+            "cachedInputTokens": 3000,
+            "outputTokens": 1200,
+            "reasoningOutputTokens": 300,
+            "totalTokens": 15500,
+          },
+          "total": {
+            "inputTokens": 30000,
+            "cachedInputTokens": 8000,
+            "outputTokens": 4000,
+            "reasoningOutputTokens": 1000,
+            "totalTokens": regular_prior_total_tokens,
+          },
+        },
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 8,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
       "method": "turn/completed",
       "params": {
         "threadId": thread_id,
@@ -441,7 +478,58 @@ send_line(prod, {
   },
 })
 send_line(prod, {
-  "id": 8,
+  "id": 12,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "turn/started",
+      "params": {
+        "threadId": thread_id,
+        "turn": {
+          "id": compacted_turn_id,
+          "key": compacted_turn_key,
+          "status": "inProgress",
+          "latestLabel": "Running compacted continuation",
+        },
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 13,
+  "method": "codexd/runtime/event",
+  "params": {
+    "runtimeId": runtime_id,
+    "notification": {
+      "method": "thread/tokenUsage/updated",
+      "params": {
+        "threadId": thread_id,
+        "turnId": compacted_turn_id,
+        "turnKey": compacted_turn_key,
+        "tokenUsage": {
+          "modelContextWindow": 128000,
+          "last": {
+            "inputTokens": 34000,
+            "cachedInputTokens": 7000,
+            "outputTokens": 3000,
+            "reasoningOutputTokens": 1000,
+            "totalTokens": 39000,
+          },
+          "total": {
+            "inputTokens": 90000,
+            "cachedInputTokens": 21000,
+            "outputTokens": 10000,
+            "reasoningOutputTokens": 4500,
+            "totalTokens": regular_compacted_cumulative_total_tokens,
+          },
+        },
+      },
+    },
+  },
+})
+send_line(prod, {
+  "id": 14,
   "method": "codexd/runtime/event",
   "params": {
     "runtimeId": runtime_id,
@@ -485,11 +573,11 @@ send_line(prod, {
             "totalTokens": 3920,
           },
           "total": {
-            "inputTokens": 5500,
-            "cachedInputTokens": 2200,
-            "outputTokens": 940,
-            "reasoningOutputTokens": 300,
-            "totalTokens": 6440,
+            "inputTokens": 70400,
+            "cachedInputTokens": 23000,
+            "outputTokens": 12100,
+            "reasoningOutputTokens": 4200,
+            "totalTokens": delegate_cumulative_total_tokens,
           },
         },
       },
@@ -537,7 +625,7 @@ deadline = time.time() + 5.0
 acked = False
 while time.time() < deadline:
   obj = json.loads(recv_line(prod, timeout_s=1.0))
-  if obj.get("id") == 11:
+  if obj.get("id") == 14:
     if "result" not in obj:
       fail(f"missing producer result: {obj!r}")
     acked = True
@@ -549,7 +637,7 @@ prod.close()
 send_line(sub, {"id": 3, "method": "codexd/subscribe", "params": {"afterSeq": after_seq}})
 
 deadline = time.time() + 5.0
-while time.time() < deadline and (subscribe_response is None or len(events) < 10):
+while time.time() < deadline and (subscribe_response is None or len(events) < 20):
   handle_line(recv_line(sub, timeout_s=1.0))
 
 sub.close()
@@ -578,9 +666,13 @@ if seqs != sorted(seqs):
 
 upserts = []
 state_upsert_seen = False
+regular_reconnect_baseline_upsert_seen = False
+regular_reconnect_cumulative_upsert_seen = False
 delegate_upsert_seen = False
 delegate_token_upsert_seen = False
+delegate_cumulative_total_upsert_seen = False
 delegate_token_key_only_notification_seen = False
+delegate_cumulative_total_notification_seen = False
 regular_completion_prompt_seen = False
 delegate_completion_seen = False
 stale_duplicate_delegate_completion_seen = False
@@ -604,6 +696,22 @@ for e in codexd_events:
       ):
         state_upsert_seen = True
       if (
+        active_turn.get("turnId") == compacted_turn_id
+        and active_turn.get("turnKey") == compacted_turn_key
+      ):
+        baseline_usage = active_turn.get("tokenUsageBaseline") or {}
+        baseline_total_usage = baseline_usage.get("total") or {}
+        if baseline_total_usage.get("totalTokens") == regular_prior_total_tokens:
+          regular_reconnect_baseline_upsert_seen = True
+        token_usage = active_turn.get("tokenUsage") or {}
+        last_usage = token_usage.get("last") or {}
+        total_usage = token_usage.get("total") or {}
+        if (
+          last_usage.get("totalTokens") == 39000
+          and total_usage.get("totalTokens") == regular_compacted_cumulative_total_tokens
+        ):
+          regular_reconnect_cumulative_upsert_seen = True
+      if (
         active_turn.get("turnId") == delegate_turn_id
         and active_turn.get("turnKey") == delegate_turn_key
         and active_turn.get("scope") == "delegate"
@@ -615,6 +723,9 @@ for e in codexd_events:
         last_usage = token_usage.get("last") or {}
         if last_usage.get("inputTokens") == 3400:
           delegate_token_upsert_seen = True
+        total_usage = token_usage.get("total") or {}
+        if total_usage.get("totalTokens") == delegate_cumulative_total_tokens:
+          delegate_cumulative_total_upsert_seen = True
     upserts.append(e)
   if typ == "runtimeNotification":
     payload_runtime_id = payload.get("runtimeId") or payload.get("runtime_id")
@@ -651,18 +762,30 @@ for e in codexd_events:
         and notification_params.get("turnKey") == delegate_turn_key
       ):
         delegate_token_key_only_notification_seen = True
+        token_usage = notification_params.get("tokenUsage") or {}
+        total_usage = token_usage.get("total") or {}
+        if total_usage.get("totalTokens") == delegate_cumulative_total_tokens:
+          delegate_cumulative_total_notification_seen = True
     notifs.append(e)
 
 if not upserts:
   fail(f"expected runtimeUpsert in {len(codexd_events)} events")
 if not state_upsert_seen:
   fail("expected runtime/updateState active turn summary in runtimeUpsert events")
+if not regular_reconnect_baseline_upsert_seen:
+  fail("expected same-thread active turn snapshot to carry prior cumulative tokenUsageBaseline")
+if not regular_reconnect_cumulative_upsert_seen:
+  fail("expected same-thread active turn snapshot to retain compacted cumulative tokenUsage")
 if not delegate_upsert_seen:
   fail("expected delegate active turn summary with turnKey in runtimeUpsert events")
 if not delegate_token_upsert_seen:
   fail("expected delegate token usage to update the keyed active turn")
+if not delegate_cumulative_total_upsert_seen:
+  fail("expected delegate runtimeUpsert token usage to retain cumulative total usage")
 if not delegate_token_key_only_notification_seen:
   fail("expected delegate token usage notification to be keyed by turnKey without turnId")
+if not delegate_cumulative_total_notification_seen:
+  fail("expected delegate token usage notification to retain cumulative total usage")
 if not notifs:
   fail(f"expected runtimeNotification in {len(codexd_events)} events")
 if "turn/started" not in notif_methods:
@@ -695,6 +818,8 @@ out = {
   "eventTypes": [e.get("params", {}).get("event", {}).get("type") for e in codexd_events],
   "runtimeNotificationMethods": notif_methods,
   "regularCompletionPromptSeen": regular_completion_prompt_seen,
+  "regularReconnectBaselineSeen": regular_reconnect_baseline_upsert_seen,
+  "delegateCumulativeTotalTokensSeen": delegate_cumulative_total_notification_seen,
 }
 
 with open(out_json, "w", encoding="utf-8") as f:
