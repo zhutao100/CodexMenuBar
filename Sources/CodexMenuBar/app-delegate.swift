@@ -597,7 +597,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       FileChangeSummary(
         path: "Tests/CodexMenuBarTests/turn-store-history-tests.swift", kind: .update),
       FileChangeSummary(
-        path: "Tests/CodexMenuBarUITests/menu-bar-ui-smoke-tests.swift", kind: .update),
+        path: "Tests/CodexMenuBarUITests/status-center-token-usage-ui-tests.swift",
+        kind: .update),
     ] {
       turnStore.RecordFileChange(endpointId: endpointId, turnId: turnId, change: change)
     }

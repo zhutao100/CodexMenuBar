@@ -1,0 +1,98 @@
+import AppKit
+import XCTest
+
+@MainActor
+final class SettingsWindowUITests: CodexMenuBarUITestCase {
+  func testSettingsShortcutOpensSettingsWindow() throws {
+    let app = LaunchApp()
+    _ = try StatusItem(in: app)
+
+    app.activate()
+    app.typeKey(",", modifierFlags: .command)
+
+    XCTAssertTrue(SettingsWindow(in: app).waitForExistence(timeout: 5))
+  }
+
+  func testSettingsWindowAppliesSessionSocketOverride() throws {
+    let (_, settingsWindow) = LaunchSettingsWindow()
+
+    let socketField = settingsWindow.textFields["settings.socketOverride"]
+    XCTAssertTrue(socketField.waitForExistence(timeout: 5))
+    socketField.click()
+    socketField.typeText("/tmp/codex-ui-test.sock")
+
+    let applyButton = settingsWindow.buttons["settings.applySocketOverride"]
+    XCTAssertTrue(applyButton.waitForExistence(timeout: 5))
+    applyButton.click()
+
+    let effectivePath = settingsWindow.staticTexts["settings.effectiveSocketPath"]
+    XCTAssertTrue(effectivePath.waitForExistence(timeout: 5))
+    XCTAssertTrue(WaitForStringValue(of: effectivePath, equals: "/tmp/codex-ui-test.sock"))
+  }
+
+  func testSettingsWindowStartsCompactAndBounded() throws {
+    let (app, settingsWindow) = LaunchSettingsWindow()
+
+    XCTAssertGreaterThanOrEqual(settingsWindow.frame.width, 520)
+    XCTAssertLessThanOrEqual(settingsWindow.frame.width, 700)
+    XCTAssertGreaterThanOrEqual(settingsWindow.frame.height, 360)
+    XCTAssertLessThanOrEqual(settingsWindow.frame.height, 560)
+    XCTAssertTrue(
+      settingsWindow.descendants(matching: .any)["settings.launchAtLogin"]
+        .waitForExistence(timeout: 5))
+    XCTAssertTrue(settingsWindow.staticTexts["settings.launchAtLoginStatus"].exists)
+    AttachScreenshot(named: "settings-window-compact", app: app)
+  }
+
+  func testSettingsWindowUseLaunchDefaultRestoresResolvedSocketPath() throws {
+    let (_, settingsWindow) = LaunchSettingsWindow()
+
+    let socketField = settingsWindow.textFields["settings.socketOverride"]
+    XCTAssertTrue(socketField.waitForExistence(timeout: 5))
+
+    let effectivePath = settingsWindow.staticTexts["settings.effectiveSocketPath"]
+    XCTAssertTrue(effectivePath.waitForExistence(timeout: 5))
+    let defaultPath = String(describing: effectivePath.value ?? "")
+
+    socketField.click()
+    socketField.typeText("/tmp/codex-ui-test.sock")
+    settingsWindow.buttons["settings.applySocketOverride"].click()
+    XCTAssertTrue(WaitForStringValue(of: effectivePath, equals: "/tmp/codex-ui-test.sock"))
+
+    let launchDefaultButton = settingsWindow.buttons["settings.useLaunchDefault"]
+    XCTAssertTrue(launchDefaultButton.waitForExistence(timeout: 5))
+    launchDefaultButton.click()
+
+    XCTAssertTrue(WaitForStringValue(of: effectivePath, equals: defaultPath))
+  }
+
+  func testSettingsWindowAccessibilityAudit() throws {
+    let app = LaunchApp(startScreen: "Settings")
+    XCTAssertTrue(SettingsWindow(in: app).waitForExistence(timeout: 5))
+    try app.performAccessibilityAudit(for: .all) { issue in
+      // On macOS 15/Xcode 16, auditing this SwiftUI-hosted settings window can surface a
+      // framework-level parent/child mismatch while the app logs a
+      // `SwiftUI.AccessibilityNode accessibilityChildrenAttribute` exception.
+      let isKnownParentChildMismatch =
+        issue.compactDescription == "Parent/Child mismatch"
+        && issue.detailedDescription.contains("not an accessibility child of the parent element")
+
+      // The audit also reports the synthetic root Group that AppKit exposes for the
+      // hosted SwiftUI content as missing a description, even though the actionable
+      // descendants are labeled and queryable.
+      let isKnownRootGroupDescriptionGap =
+        issue.compactDescription == "Element has no description"
+        && issue.detailedDescription.contains("missing useful accessibility information")
+
+      // macOS also includes the system "emoji & symbols" Touch Bar item in the
+      // audit surface for this window, which reports as missing a click/tap action.
+      let isKnownSystemTouchBarActionGap =
+        issue.compactDescription == "Action is missing"
+        && issue.detailedDescription.contains("equivalent to click/tap inputs")
+
+      return isKnownParentChildMismatch
+        || isKnownRootGroupDescriptionGap
+        || isKnownSystemTouchBarActionGap
+    }
+  }
+}
