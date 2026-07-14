@@ -14,10 +14,13 @@
 - `ProcessInfoSleepPreventionManager` owns the `ProcessInfo.beginActivity` token.
 - `AutomaticSleepPreventionController` applies connection, preference, and active-session policy without coupling it to SwiftUI.
 - `AppDelegate` refreshes policy after authoritative codexd and Settings changes.
+- Disconnect clears authoritative runtime IDs until the reconnect snapshot is applied.
+- Terminal notifications patch status on runs already archived by codexd's preceding runtime snapshot.
 - Mode changes acquire the replacement activity before releasing the prior token.
 
 ## Verification
 
 - Unit tests cover start, mode change, disable, disconnect, and zero-active-session transitions.
 - `SettingsWindowUITests` checks the Settings controls and `pmset -g assertions`.
-- The `active-turn` UI fixture supports `--pause-active-fixture-after <seconds>` for deterministic release verification.
+- The `active-turn` UI fixture supports `--pause-active-fixture-after <seconds>` and emits the codexd snapshot-summary then paused-completion order for deterministic release verification.
+- The reconnect fixture keeps the assertion released after transport reconnection until authoritative runtime IDs return.

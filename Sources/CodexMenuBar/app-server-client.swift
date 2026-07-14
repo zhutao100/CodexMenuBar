@@ -621,6 +621,10 @@ final class AppServerClient: @unchecked Sendable {
     socketReadBuffer.removeAll(keepingCapacity: false)
     pendingResponses.removeAll()
 
+    // Retain turn details for reconnect UI, but do not expose runtime IDs as
+    // authoritative again until the next snapshot or runtime event.
+    DispatchEndpointIds([])
+
     if notify && shouldRun {
       EmitState(.reconnecting)
     }

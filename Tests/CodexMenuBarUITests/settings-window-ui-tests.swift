@@ -165,6 +165,66 @@ final class SettingsWindowUITests: CodexMenuBarUITestCase {
     AttachScreenshot(named: "settings-sleep-prevention-paused", app: app)
   }
 
+  func testSettingsSleepPreventionWaitsForReconnectSnapshotBeforeResuming() throws {
+    let (app, settingsWindow) = LaunchSettingsWindow(
+      fixture: "active-turn",
+      additionalArguments: ["--reconnect-active-fixture-after", "12"]
+    )
+    defer {
+      app.terminate()
+    }
+
+    let preventSleepToggle =
+      settingsWindow.descendants(matching: .any)["settings.preventSleepWhileActive"]
+    let status = settingsWindow.staticTexts["settings.sleepPreventionStatus"]
+
+    XCTAssertTrue(preventSleepToggle.waitForExistence(timeout: 5))
+    XCTAssertTrue(status.waitForExistence(timeout: 5))
+    preventSleepToggle.click()
+
+    let activeStatus =
+      "Preventing Mac idle sleep for 1 active Codex session. The display may turn off."
+    let readyStatus = "Ready. Sleep prevention starts when a Codex session is working."
+    XCTAssertTrue(WaitForStringValue(of: status, equals: activeStatus))
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: true
+      ),
+      PowerAssertionsOutput()
+    )
+
+    XCTAssertTrue(WaitForStringValue(of: status, equals: readyStatus, timeout: 20))
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: false
+      ),
+      PowerAssertionsOutput()
+    )
+
+    RunLoop.current.run(until: Date().addingTimeInterval(2))
+    XCTAssertTrue(WaitForStringValue(of: status, equals: readyStatus, timeout: 2))
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: false,
+        timeout: 2
+      ),
+      PowerAssertionsOutput()
+    )
+    AttachScreenshot(named: "settings-sleep-prevention-awaiting-reconnect-snapshot", app: app)
+
+    XCTAssertTrue(WaitForStringValue(of: status, equals: activeStatus, timeout: 10))
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: true
+      ),
+      PowerAssertionsOutput()
+    )
+  }
+
   func testSettingsWindowUseLaunchDefaultRestoresResolvedSocketPath() throws {
     let (_, settingsWindow) = LaunchSettingsWindow()
 

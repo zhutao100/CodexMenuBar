@@ -4,7 +4,7 @@ import XCTest
 @testable import CodexMenuBar
 
 final class MenuBarViewModelTests: XCTestCase {
-  func testAuthoritativeRunningCountRequiresARegisteredRuntime() {
+  func testAuthoritativeRunningCountStaysClearDuringReconnectUntilRuntimeStateReturns() {
     let store = TurnStore()
     let model = MenuBarViewModel(turnStore: store)
     let start = Date(timeIntervalSince1970: 1_700_000_000)
@@ -23,7 +23,11 @@ final class MenuBarViewModelTests: XCTestCase {
     XCTAssertEqual(model.authoritativeRunningCount, 1)
 
     model.SetEndpointIds([])
+    XCTAssertEqual(model.runningCount, 1)
     XCTAssertEqual(model.authoritativeRunningCount, 0)
+
+    model.SetEndpointIds(["ep-1"])
+    XCTAssertEqual(model.authoritativeRunningCount, 1)
   }
 
   func testCommandsSectionAutoExpandsForRunningAndFailedCommands() {

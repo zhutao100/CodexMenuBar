@@ -336,7 +336,7 @@ struct CompletedRun: Equatable {
   let turnKey: String?
   let startedAt: Date
   let endedAt: Date
-  let status: TurnExecutionStatus
+  var status: TurnExecutionStatus
   let latestLabel: String?
   let promptPreview: String?
   let model: String?

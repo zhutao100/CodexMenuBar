@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var timer: Timer?
   private var isPopoverVisible = false
   private var isStatusWindowVisible = false
+  private var isRuntimeStateAuthoritative = false
 
   private var isLiveSurfaceVisible: Bool {
     isPopoverVisible || isStatusWindowVisible
@@ -50,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       appServerClient.Start()
     }
     ApplyUITestFixtureIfRequested()
+    if IsUITestMode() {
+      isRuntimeStateAuthoritative = true
+    }
     RefreshSleepPrevention()
     if ShouldLaunchIntoSettings() {
       ShowSettingsWindow()
@@ -274,22 +278,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func ConfigureClient() {
     appServerClient.OnStateChange = { [weak self] state in
-      guard let self else {
-        return
-      }
-      self.model.connectionState = state
-      self.settingsModel.connectionState = state
-      self.RefreshSleepPrevention()
-      self.model.InvalidateView()
+      self?.HandleConnectionStateChange(state)
     }
 
     appServerClient.OnEndpointIdsChanged = { [weak self] endpointIds in
-      guard let self else {
-        return
-      }
-      self.model.SetEndpointIds(endpointIds)
-      self.RefreshSleepPrevention()
-      self.model.InvalidateView()
+      self?.HandleEndpointIdsChanged(endpointIds)
     }
 
     appServerClient.OnDiagnosticsChanged = { [weak self] diagnostics in
@@ -308,6 +301,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  private func HandleConnectionStateChange(_ state: AppServerConnectionState) {
+    model.connectionState = state
+    settingsModel.connectionState = state
+    isRuntimeStateAuthoritative = false
+    RefreshSleepPrevention()
+    model.InvalidateView()
+  }
+
+  private func HandleEndpointIdsChanged(_ endpointIds: [String]) {
+    model.SetEndpointIds(endpointIds)
+    isRuntimeStateAuthoritative = model.connectionState == .connected
+    RefreshSleepPrevention()
+    model.InvalidateView()
+  }
+
   private func ConfigureSleepPrevention() {
     settingsModel.SleepPreventionSettingsChanged = { [weak self] in
       self?.RefreshSleepPrevention()
@@ -318,7 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     sleepPreventionController.Update(
       isEnabled: settingsModel.preventSleepWhileCodexIsActive,
       keepDisplayAwake: settingsModel.keepDisplayAwakeWhilePreventingSleep,
-      isConnected: model.connectionState == .connected,
+      isConnected: model.connectionState == .connected && isRuntimeStateAuthoritative,
       activeSessionCount: model.authoritativeRunningCount
     )
     settingsModel.UpdateSleepPreventionStatus(
@@ -743,6 +751,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       threadId: threadId,
       turnId: turnId
     )
+    ScheduleActiveUITestFixtureReconnect(endpointId: endpointId)
     model.SyncSectionDisclosureState()
     model.InvalidateView()
   }
@@ -766,6 +775,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
 
       self.HandleNotification(
+        method: "thread/snapshotSummary",
+        params: [
+          "endpointId": endpointId,
+          "activeTurnKeys": [],
+        ]
+      )
+      self.HandleNotification(
         method: "turn/completed",
         params: [
           "endpointId": endpointId,
@@ -776,6 +792,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           ],
         ]
       )
+    }
+  }
+
+  private func ScheduleActiveUITestFixtureReconnect(endpointId: String) {
+    guard
+      let delayValue = ArgumentValue(after: "--reconnect-active-fixture-after"),
+      let delay = TimeInterval(delayValue),
+      delay > 0
+    else {
+      return
+    }
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+      guard let self else {
+        return
+      }
+
+      self.HandleConnectionStateChange(.reconnecting)
+      self.HandleEndpointIdsChanged([])
+
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+        self?.HandleConnectionStateChange(.connected)
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        self?.HandleEndpointIdsChanged([endpointId])
+      }
     }
   }
 

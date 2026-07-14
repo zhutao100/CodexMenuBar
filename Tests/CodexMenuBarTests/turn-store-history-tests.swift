@@ -85,6 +85,43 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertEqual(rows[0].recentRuns.first?.status, .paused)
   }
 
+  func testPausedCompletionPatchesSnapshotReconciledArchiveStatus() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      turnKey: "thread-1:turn-1",
+      at: start
+    )
+    store.ReconcileSnapshotActiveTurns(
+      endpointId: "ep-1",
+      activeTurnKeys: [],
+      at: start.addingTimeInterval(1)
+    )
+    XCTAssertEqual(
+      store.EndpointRows(activeEndpointIds: ["ep-1"]).first?.recentRuns.first?.status,
+      .completed
+    )
+
+    let archived = store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      turnKey: "thread-1:turn-1",
+      status: .paused,
+      at: start.addingTimeInterval(2)
+    )
+
+    XCTAssertFalse(archived)
+    XCTAssertEqual(
+      store.EndpointRows(activeEndpointIds: ["ep-1"]).first?.recentRuns.first?.status,
+      .paused
+    )
+  }
+
   func testArchivesTurnWhenSnapshotReconciliationCompletesIt() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)

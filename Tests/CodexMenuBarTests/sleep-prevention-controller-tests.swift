@@ -86,6 +86,43 @@ final class AutomaticSleepPreventionControllerTests: XCTestCase {
     XCTAssertEqual(controller.activeSessionCount, 0)
     XCTAssertFalse(controller.isPreventingSleep)
   }
+
+  func testReconnectWaitsForAuthoritativeActiveSessionCount() {
+    let manager = FakeSleepPreventionManager()
+    let controller = AutomaticSleepPreventionController(manager: manager)
+
+    controller.Update(
+      isEnabled: true,
+      keepDisplayAwake: false,
+      isConnected: true,
+      activeSessionCount: 1
+    )
+    controller.Update(
+      isEnabled: true,
+      keepDisplayAwake: false,
+      isConnected: false,
+      activeSessionCount: 1
+    )
+    controller.Update(
+      isEnabled: true,
+      keepDisplayAwake: false,
+      isConnected: true,
+      activeSessionCount: 0
+    )
+
+    XCTAssertEqual(manager.events, [.start(.systemOnly), .stop])
+    XCTAssertFalse(controller.isPreventingSleep)
+
+    controller.Update(
+      isEnabled: true,
+      keepDisplayAwake: false,
+      isConnected: true,
+      activeSessionCount: 1
+    )
+
+    XCTAssertEqual(manager.events, [.start(.systemOnly), .stop, .start(.systemOnly)])
+    XCTAssertTrue(controller.isPreventingSleep)
+  }
 }
 
 @MainActor

@@ -357,12 +357,6 @@ final class TurnStore {
     let key = ResolveLocalTurnKey(
       endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
     if let existing = turnsByKey[key] {
-      if existing.status != .inProgress,
-        CompletedRunAlreadyArchived(
-          endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
-      {
-        return false
-      }
       existing.ApplyStatus(status, at: now)
       existing.UpdateThreadId(threadId)
       existing.UpdateTurnKey(turnKey)
@@ -374,8 +368,12 @@ final class TurnStore {
       }
       return archived
     }
-    if CompletedRunAlreadyArchived(
-      endpointId: endpointId, turnKey: turnKey, threadId: threadId, turnId: turnId)
+    if UpdateCompletedRunStatusIfArchived(
+      endpointId: endpointId,
+      turnKey: turnKey,
+      threadId: threadId,
+      turnId: turnId,
+      status: status)
     {
       return false
     }
@@ -1110,11 +1108,12 @@ final class TurnStore {
       return false
     }
 
-    if CompletedRunAlreadyArchived(
+    if UpdateCompletedRunStatusIfArchived(
       endpointId: turn.endpointId,
       turnKey: turn.turnKey,
       threadId: turn.threadId,
-      turnId: turn.turnId)
+      turnId: turn.turnId,
+      status: turn.status)
     {
       return false
     }
@@ -1174,15 +1173,28 @@ final class TurnStore {
     return true
   }
 
-  private func CompletedRunAlreadyArchived(
+  @discardableResult
+  private func UpdateCompletedRunStatusIfArchived(
     endpointId: String,
     turnKey: String?,
     threadId: String?,
-    turnId: String
+    turnId: String,
+    status: TurnExecutionStatus
   ) -> Bool {
-    completedRunsByEndpoint[endpointId]?.contains {
-      RunMatchesTurn($0, turnKey: turnKey, threadId: threadId, turnId: turnId)
-    } == true
+    guard status != .inProgress,
+      var runs = completedRunsByEndpoint[endpointId],
+      let index = runs.firstIndex(where: {
+        RunMatchesTurn($0, turnKey: turnKey, threadId: threadId, turnId: turnId)
+      })
+    else {
+      return false
+    }
+
+    if runs[index].status != status {
+      runs[index].status = status
+      completedRunsByEndpoint[endpointId] = runs
+    }
+    return true
   }
 
   private func HasConflictingActiveTurnIdentity(
