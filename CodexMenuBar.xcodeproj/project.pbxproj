@@ -41,6 +41,7 @@
 		CA95F205167FEBF91871BB86 /* prompt-disclosure-preview-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F46AFC789B9E46F4C175BE7 /* prompt-disclosure-preview-tests.swift */; };
 		CF57DB80E772E53EC86F3A8F /* status-center-window-ui-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16ACE2CF9F294661AE3C19D1 /* status-center-window-ui-tests.swift */; };
 		E6C42C977B850D09DB995995 /* svgs in Resources */ = {isa = PBXBuildFile; fileRef = F132C795B266D59244279110 /* svgs */; };
+		F7D11F45720C5368FFD4D936 /* app-server-client-callback-ordering-tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810A95EA721C87D3C42A8F7E /* app-server-client-callback-ordering-tests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +81,7 @@
 		682E066091ED612F26AD0841 /* settings-window-ui-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "settings-window-ui-tests.swift"; sourceTree = "<group>"; };
 		78CA2874DC40F8B93A9EB459 /* turn-store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "turn-store.swift"; sourceTree = "<group>"; };
 		7F4A2CFF39DC859A0326A22C /* status-menu-controller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "status-menu-controller.swift"; sourceTree = "<group>"; };
+		810A95EA721C87D3C42A8F7E /* app-server-client-callback-ordering-tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "app-server-client-callback-ordering-tests.swift"; sourceTree = "<group>"; };
 		8673845FF8A7B929AE3B48EF /* CodexMenuBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CodexMenuBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		886DBAB2B96CBB285D141779 /* models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = models.swift; sourceTree = "<group>"; };
 		88F49D17DC71FDCE9C3E8A3E /* app-server-client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "app-server-client.swift"; sourceTree = "<group>"; };
@@ -104,6 +106,7 @@
 		092A45A5132C7FEC9902AEB4 /* CodexMenuBarTests */ = {
 			isa = PBXGroup;
 			children = (
+				810A95EA721C87D3C42A8F7E /* app-server-client-callback-ordering-tests.swift */,
 				552618B773E16C3C15FD542B /* codexd-socket-configuration-tests.swift */,
 				9907DD2492503B856D3F71BC /* menu-bar-view-model-tests.swift */,
 				1CBBF48CB606BAA159CDCAC1 /* plan-parsing-tests.swift */,
@@ -329,6 +332,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6BD69309045BB6DC49DFB8C9 /* SandboxTestingBootstrap.c in Sources */,
+				F7D11F45720C5368FFD4D936 /* app-server-client-callback-ordering-tests.swift in Sources */,
 				90EB39AD9EBFF1A243C72036 /* codexd-socket-configuration-tests.swift in Sources */,
 				5E5FAF31C17D8820D39CEB67 /* menu-bar-view-model-tests.swift in Sources */,
 				B09DE4975945056CA0F0E27B /* plan-parsing-tests.swift in Sources */,

@@ -28,6 +28,8 @@ UI tests use launch harnesses (`--start-screen Settings`, `--open-status-surface
 
 `AppDelegate` owns automatic sleep-prevention synchronization. Keep the `ProcessInfo` activity active only when the preference is enabled, `codexd` is connected, and at least one authoritative runtime has an in-progress turn. `AppServerClient` clears dispatched runtime IDs on disconnect so reconnect cannot reacquire the activity before snapshot state returns. Refresh after connection, runtime, turn, and preference changes; paused, interrupted, failed, completed, disconnected, and terminating states must release the activity immediately.
 
+`AppServerClient` delivers state, snapshot notifications, and runtime IDs FIFO through `OrderedMainActorCallbackQueue`. Preserve that single ordered path so `AppDelegate` cannot mark reconnect state authoritative before snapshot reconciliation.
+
 The menu bar popover keeps global actions as icon buttons in the title row with `.help`/accessibility labels; keep idle popovers compact and resize active popovers from runtime count/expanded state instead of adding fixed footer chrome.
 
 The Status Center sidebar starts compact, is resizable when expanded, restores the last expanded width after collapse/expand, and still switches runtimes through collapsed icon buttons. Preserve the centered `No Codex runtimes` detail empty state when no runtime is selected.

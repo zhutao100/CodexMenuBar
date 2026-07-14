@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-enum AppServerConnectionState: Equatable {
+enum AppServerConnectionState: Equatable, Sendable {
   case disconnected
   case connecting
   case connected
@@ -13,6 +13,27 @@ private struct UncheckedSendableParams: @unchecked Sendable {
   let value: [String: Any]
 }
 
+private struct UncheckedMainActorOperation: @unchecked Sendable {
+  let body: @MainActor () -> Void
+}
+
+final class OrderedMainActorCallbackQueue: @unchecked Sendable {
+  private let queue: DispatchQueue
+
+  init(label: String) {
+    queue = DispatchQueue(label: label, target: .main)
+  }
+
+  func Enqueue(_ operation: @escaping @MainActor () -> Void) {
+    let sendableOperation = UncheckedMainActorOperation(body: operation)
+    queue.async {
+      MainActor.assumeIsolated {
+        sendableOperation.body()
+      }
+    }
+  }
+}
+
 private final class AppServerClientCallbacks: @unchecked Sendable {
   var OnNotification: ((String, [String: Any]) -> Void)?
   var OnStateChange: ((AppServerConnectionState) -> Void)?
@@ -22,9 +43,11 @@ private final class AppServerClientCallbacks: @unchecked Sendable {
 
 // Concurrency contract:
 // - All mutable connection state is confined to `workQueue`.
-// - UI callbacks are delivered on the main actor via `Task { @MainActor in ... }`.
+// - UI callbacks are delivered FIFO on the main actor through `callbackQueue`.
 final class AppServerClient: @unchecked Sendable {
   private let callbacks = AppServerClientCallbacks()
+  private let callbackQueue = OrderedMainActorCallbackQueue(
+    label: "com.openai.codex.menubar.codexd.callbacks")
 
   @MainActor
   var OnNotification: ((String, [String: Any]) -> Void)? {
@@ -637,7 +660,7 @@ final class AppServerClient: @unchecked Sendable {
 
     state = nextState
     let callbacks = callbacks
-    Task { @MainActor in
+    callbackQueue.Enqueue {
       callbacks.OnStateChange?(nextState)
     }
   }
@@ -653,7 +676,7 @@ final class AppServerClient: @unchecked Sendable {
   private func EmitDiagnostics() {
     let callbacks = callbacks
     let diagnostics = diagnostics
-    Task { @MainActor in
+    callbackQueue.Enqueue {
       callbacks.OnDiagnosticsChanged?(diagnostics)
     }
   }
@@ -665,7 +688,7 @@ final class AppServerClient: @unchecked Sendable {
 
     lastDispatchedEndpointIds = endpointIds
     let callbacks = callbacks
-    Task { @MainActor in
+    callbackQueue.Enqueue {
       callbacks.OnEndpointIdsChanged?(endpointIds)
     }
   }
@@ -673,7 +696,7 @@ final class AppServerClient: @unchecked Sendable {
   private func DispatchNotification(method: String, params: [String: Any]) {
     let callbacks = callbacks
     let sendableParams = UncheckedSendableParams(value: params)
-    Task { @MainActor in
+    callbackQueue.Enqueue {
       callbacks.OnNotification?(method, sendableParams.value)
     }
   }

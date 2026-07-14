@@ -15,6 +15,7 @@
 - `AutomaticSleepPreventionController` applies connection, preference, and active-session policy without coupling it to SwiftUI.
 - `AppDelegate` refreshes policy after authoritative codexd and Settings changes.
 - Disconnect clears authoritative runtime IDs until the reconnect snapshot is applied.
+- App-server callbacks use one FIFO main-actor queue, preserving connected state, snapshot reconciliation, and runtime-ID ordering.
 - Terminal notifications patch status on runs already archived by codexd's preceding runtime snapshot.
 - Mode changes acquire the replacement activity before releasing the prior token.
 
