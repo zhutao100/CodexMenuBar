@@ -8,19 +8,51 @@ private enum SettingsWindowLayout {
   static let maxContentWidth: CGFloat = 720
 }
 
+private enum SettingsDefaultsKey {
+  static let preventSleepWhileCodexIsActive = "preventSleepWhileCodexIsActive"
+  static let keepDisplayAwakeWhilePreventingSleep = "keepDisplayAwakeWhilePreventingSleep"
+}
+
 @MainActor
 @Observable
 final class SettingsViewModel {
   @ObservationIgnored private let loginItemManager: LoginItemManaging
+  @ObservationIgnored private let userDefaults: UserDefaults
+  @ObservationIgnored var SleepPreventionSettingsChanged: (() -> Void)?
 
   var sessionSocketPathOverride: String = ""
   var connectionState: AppServerConnectionState = .disconnected
   var launchAtLoginStatus: LoginItemStatus = .notRegistered
   var launchAtLoginError: String?
+  private(set) var preventSleepWhileCodexIsActive: Bool
+  private(set) var keepDisplayAwakeWhilePreventingSleep: Bool
+  private(set) var activeCodexSessionCount = 0
+  private(set) var isPreventingSleep = false
+  private(set) var activeSleepPreventionMode: SleepPreventionMode?
 
-  init(loginItemManager: LoginItemManaging = ServiceManagementLoginItemManager()) {
+  init(
+    loginItemManager: LoginItemManaging = ServiceManagementLoginItemManager(),
+    userDefaults: UserDefaults? = nil
+  ) {
+    let resolvedUserDefaults = userDefaults ?? Self.DefaultUserDefaults()
     self.loginItemManager = loginItemManager
+    self.userDefaults = resolvedUserDefaults
+    preventSleepWhileCodexIsActive =
+      resolvedUserDefaults.bool(forKey: SettingsDefaultsKey.preventSleepWhileCodexIsActive)
+    keepDisplayAwakeWhilePreventingSleep =
+      resolvedUserDefaults.bool(forKey: SettingsDefaultsKey.keepDisplayAwakeWhilePreventingSleep)
     RefreshLaunchAtLoginStatus()
+  }
+
+  private static func DefaultUserDefaults() -> UserDefaults {
+    let processInfo = ProcessInfo.processInfo
+    if processInfo.arguments.contains("--uitest"),
+      let suiteName = processInfo.environment["CODEXMENUBAR_UI_TEST_DEFAULTS_SUITE"],
+      let userDefaults = UserDefaults(suiteName: suiteName)
+    {
+      return userDefaults
+    }
+    return .standard
   }
 
   var effectiveConfiguration: CodexdSocketConfiguration {
@@ -82,6 +114,29 @@ final class SettingsViewModel {
     }
   }
 
+  var sleepPreventionStatusTitle: String {
+    guard preventSleepWhileCodexIsActive else {
+      return "Off. CodexMenuBar does not change idle sleep behavior."
+    }
+
+    guard isPreventingSleep, activeCodexSessionCount > 0 else {
+      return "Ready. Sleep prevention starts when a Codex session is working."
+    }
+
+    let sessionLabel =
+      activeCodexSessionCount == 1
+      ? "1 active Codex session"
+      : "\(activeCodexSessionCount) active Codex sessions"
+    switch activeSleepPreventionMode {
+    case .systemAndDisplay:
+      return "Preventing Mac and display idle sleep for \(sessionLabel)."
+    case .systemOnly:
+      return "Preventing Mac idle sleep for \(sessionLabel). The display may turn off."
+    case nil:
+      return "Ready. Sleep prevention starts when a Codex session is working."
+    }
+  }
+
   func RefreshLaunchAtLoginStatus() {
     launchAtLoginStatus = loginItemManager.Status
   }
@@ -99,6 +154,37 @@ final class SettingsViewModel {
 
   func OpenLoginItemsSettings() {
     loginItemManager.OpenSystemSettingsLoginItems()
+  }
+
+  func SetPreventSleepWhileCodexIsActive(_ isEnabled: Bool) {
+    guard preventSleepWhileCodexIsActive != isEnabled else {
+      return
+    }
+
+    preventSleepWhileCodexIsActive = isEnabled
+    userDefaults.set(isEnabled, forKey: SettingsDefaultsKey.preventSleepWhileCodexIsActive)
+    SleepPreventionSettingsChanged?()
+  }
+
+  func SetKeepDisplayAwakeWhilePreventingSleep(_ isEnabled: Bool) {
+    guard keepDisplayAwakeWhilePreventingSleep != isEnabled else {
+      return
+    }
+
+    keepDisplayAwakeWhilePreventingSleep = isEnabled
+    userDefaults.set(
+      isEnabled, forKey: SettingsDefaultsKey.keepDisplayAwakeWhilePreventingSleep)
+    SleepPreventionSettingsChanged?()
+  }
+
+  func UpdateSleepPreventionStatus(
+    activeSessionCount: Int,
+    isPreventingSleep: Bool,
+    mode: SleepPreventionMode?
+  ) {
+    activeCodexSessionCount = max(0, activeSessionCount)
+    self.isPreventingSleep = isPreventingSleep
+    activeSleepPreventionMode = mode
   }
 }
 
@@ -219,6 +305,8 @@ private struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
           }
 
+          SleepPreventionSettings
+
           ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 16) {
               StartupSettings
@@ -274,6 +362,45 @@ private struct SettingsView: View {
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .frame(maxWidth: .infinity, alignment: .topLeading)
+  }
+
+  private var SleepPreventionSettings: some View {
+    SettingsGroup(title: "Sleep Prevention", systemImage: "moon.zzz") {
+      VStack(alignment: .leading, spacing: 10) {
+        Toggle(
+          "Prevent Mac idle sleep while Codex is working",
+          isOn: Binding(
+            get: { model.preventSleepWhileCodexIsActive },
+            set: { model.SetPreventSleepWhileCodexIsActive($0) }
+          )
+        )
+        .accessibilityIdentifier("settings.preventSleepWhileActive")
+
+        Toggle(
+          "Keep the display awake too",
+          isOn: Binding(
+            get: { model.keepDisplayAwakeWhilePreventingSleep },
+            set: { model.SetKeepDisplayAwakeWhilePreventingSleep($0) }
+          )
+        )
+        .disabled(!model.preventSleepWhileCodexIsActive)
+        .accessibilityIdentifier("settings.keepDisplayAwake")
+
+        Text(model.sleepPreventionStatusTitle)
+          .font(.caption)
+          .foregroundStyle(.primary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("settings.sleepPreventionStatus")
+
+        Text(
+          "Only in-progress sessions hold the assertion. Paused, interrupted, failed, and completed sessions allow idle sleep again. Manual sleep and lid closure still work."
+        )
+        .font(.caption)
+        .foregroundStyle(.primary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
   }
 
   private var TroubleshootingSettings: some View {

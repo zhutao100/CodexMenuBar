@@ -61,6 +61,30 @@ final class TurnStoreHistoryTests: XCTestCase {
     XCTAssertFalse(rows[0].recentRuns[0].TimelineSegments().isEmpty)
   }
 
+  func testPausedTurnIsNoLongerActiveAndRetainsPausedStatus() {
+    let store = TurnStore()
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      at: start
+    )
+    store.MarkTurnCompleted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      status: TurnExecutionStatus(serverValue: "paused"),
+      at: start.addingTimeInterval(2)
+    )
+
+    let rows = store.EndpointRows(activeEndpointIds: ["ep-1"])
+    XCTAssertEqual(store.RunningTurnCount(), 0)
+    XCTAssertNil(rows[0].activeTurn)
+    XCTAssertEqual(rows[0].recentRuns.first?.status, .paused)
+  }
+
   func testArchivesTurnWhenSnapshotReconciliationCompletesIt() {
     let store = TurnStore()
     let start = Date(timeIntervalSince1970: 1_700_000_000)

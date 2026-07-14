@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @testable import CodexMenuBar
@@ -56,6 +57,76 @@ final class SettingsViewModelTests: XCTestCase {
     model.OpenLoginItemsSettings()
 
     XCTAssertEqual(manager.openSystemSettingsCount, 1)
+  }
+
+  func testSleepPreventionSettingsPersistAndReportLiveStatus() {
+    let suiteName = "com.codex.CodexMenuBarTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+      return XCTFail("Unable to create isolated UserDefaults suite")
+    }
+    defer {
+      defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    let manager = FakeLoginItemManager(status: .notRegistered)
+    let model = SettingsViewModel(loginItemManager: manager, userDefaults: defaults)
+    var changeCount = 0
+    model.SleepPreventionSettingsChanged = {
+      changeCount += 1
+    }
+
+    XCTAssertFalse(model.preventSleepWhileCodexIsActive)
+    XCTAssertFalse(model.keepDisplayAwakeWhilePreventingSleep)
+    XCTAssertEqual(
+      model.sleepPreventionStatusTitle,
+      "Off. CodexMenuBar does not change idle sleep behavior."
+    )
+
+    model.SetPreventSleepWhileCodexIsActive(true)
+    model.SetKeepDisplayAwakeWhilePreventingSleep(true)
+    model.UpdateSleepPreventionStatus(
+      activeSessionCount: 2,
+      isPreventingSleep: true,
+      mode: .systemAndDisplay
+    )
+
+    XCTAssertEqual(changeCount, 2)
+    XCTAssertTrue(defaults.bool(forKey: "preventSleepWhileCodexIsActive"))
+    XCTAssertTrue(defaults.bool(forKey: "keepDisplayAwakeWhilePreventingSleep"))
+    XCTAssertEqual(
+      model.sleepPreventionStatusTitle,
+      "Preventing Mac and display idle sleep for 2 active Codex sessions."
+    )
+
+    let restored = SettingsViewModel(loginItemManager: manager, userDefaults: defaults)
+    XCTAssertTrue(restored.preventSleepWhileCodexIsActive)
+    XCTAssertTrue(restored.keepDisplayAwakeWhilePreventingSleep)
+  }
+
+  func testSleepPreventionReadyStatusDoesNotClaimAnAssertionWithoutActiveSessions() {
+    let suiteName = "com.codex.CodexMenuBarTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+      return XCTFail("Unable to create isolated UserDefaults suite")
+    }
+    defer {
+      defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    let model = SettingsViewModel(
+      loginItemManager: FakeLoginItemManager(status: .notRegistered),
+      userDefaults: defaults
+    )
+    model.SetPreventSleepWhileCodexIsActive(true)
+    model.UpdateSleepPreventionStatus(
+      activeSessionCount: 0,
+      isPreventingSleep: false,
+      mode: nil
+    )
+
+    XCTAssertEqual(
+      model.sleepPreventionStatusTitle,
+      "Ready. Sleep prevention starts when a Codex session is working."
+    )
   }
 }
 

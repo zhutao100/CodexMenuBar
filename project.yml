@@ -27,6 +27,8 @@ targets:
       - path: Sources/CodexMenuBar/Resources/svgs
         type: folder
         buildPhase: resources
+      - path: Sources/CodexMenuBar/Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.codex.CodexMenuBar

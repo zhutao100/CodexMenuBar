@@ -44,6 +44,127 @@ final class SettingsWindowUITests: CodexMenuBarUITestCase {
     AttachScreenshot(named: "settings-window-compact", app: app)
   }
 
+  func testSettingsSleepPreventionTogglesControlPowerAssertions() throws {
+    let (app, settingsWindow) = LaunchSettingsWindow(fixture: "active-turn")
+    defer {
+      app.terminate()
+    }
+
+    let preventSleepToggle =
+      settingsWindow.descendants(matching: .any)["settings.preventSleepWhileActive"]
+    let keepDisplayAwakeToggle =
+      settingsWindow.descendants(matching: .any)["settings.keepDisplayAwake"]
+    let status = settingsWindow.staticTexts["settings.sleepPreventionStatus"]
+
+    XCTAssertTrue(preventSleepToggle.waitForExistence(timeout: 5))
+    XCTAssertTrue(keepDisplayAwakeToggle.waitForExistence(timeout: 5))
+    XCTAssertTrue(status.waitForExistence(timeout: 5))
+
+    preventSleepToggle.click()
+
+    XCTAssertTrue(
+      WaitForStringValue(
+        of: status,
+        equals:
+          "Preventing Mac idle sleep for 1 active Codex session. The display may turn off."
+      )
+    )
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: true
+      ),
+      PowerAssertionsOutput()
+    )
+
+    keepDisplayAwakeToggle.click()
+
+    XCTAssertTrue(
+      WaitForStringValue(
+        of: status,
+        equals: "Preventing Mac and display idle sleep for 1 active Codex session."
+      )
+    )
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing:
+          "CodexMenuBar has active Codex sessions and is keeping the display awake",
+        exists: true
+      ),
+      PowerAssertionsOutput()
+    )
+    XCTAssertTrue(
+      PowerAssertionsOutput().contains("PreventUserIdleDisplaySleep"),
+      PowerAssertionsOutput()
+    )
+
+    preventSleepToggle.click()
+
+    XCTAssertTrue(
+      WaitForStringValue(
+        of: status,
+        equals: "Off. CodexMenuBar does not change idle sleep behavior."
+      )
+    )
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: false
+      ),
+      PowerAssertionsOutput()
+    )
+  }
+
+  func testSettingsSleepPreventionStopsWhenTheActiveSessionPauses() throws {
+    let (app, settingsWindow) = LaunchSettingsWindow(
+      fixture: "active-turn",
+      additionalArguments: ["--pause-active-fixture-after", "12"]
+    )
+    defer {
+      app.terminate()
+    }
+
+    let preventSleepToggle =
+      settingsWindow.descendants(matching: .any)["settings.preventSleepWhileActive"]
+    let status = settingsWindow.staticTexts["settings.sleepPreventionStatus"]
+
+    XCTAssertTrue(preventSleepToggle.waitForExistence(timeout: 5))
+    XCTAssertTrue(status.waitForExistence(timeout: 5))
+    preventSleepToggle.click()
+
+    XCTAssertTrue(
+      WaitForStringValue(
+        of: status,
+        equals:
+          "Preventing Mac idle sleep for 1 active Codex session. The display may turn off."
+      )
+    )
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: true
+      ),
+      PowerAssertionsOutput()
+    )
+    AttachScreenshot(named: "settings-sleep-prevention-active", app: app)
+
+    XCTAssertTrue(
+      WaitForStringValue(
+        of: status,
+        equals: "Ready. Sleep prevention starts when a Codex session is working.",
+        timeout: 20
+      )
+    )
+    XCTAssertTrue(
+      WaitForPowerAssertion(
+        containing: "CodexMenuBar has active Codex sessions",
+        exists: false
+      ),
+      PowerAssertionsOutput()
+    )
+    AttachScreenshot(named: "settings-sleep-prevention-paused", app: app)
+  }
+
   func testSettingsWindowUseLaunchDefaultRestoresResolvedSocketPath() throws {
     let (_, settingsWindow) = LaunchSettingsWindow()
 

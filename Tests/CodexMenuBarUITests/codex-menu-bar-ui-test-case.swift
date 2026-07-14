@@ -9,10 +9,19 @@ class CodexMenuBarUITestCase: XCTestCase {
     continueAfterFailure = false
   }
 
-  func LaunchSettingsWindow(file: StaticString = #filePath, line: UInt = #line) -> (
+  func LaunchSettingsWindow(
+    fixture: String? = nil,
+    additionalArguments: [String] = [],
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) -> (
     app: XCUIApplication, window: XCUIElement
   ) {
-    let app = LaunchApp(startScreen: "Settings")
+    let app = LaunchApp(
+      startScreen: "Settings",
+      fixture: fixture,
+      additionalArguments: additionalArguments
+    )
     let settingsWindow = SettingsWindow(in: app)
     XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5), file: file, line: line)
     return (app, settingsWindow)
@@ -36,7 +45,10 @@ class CodexMenuBarUITestCase: XCTestCase {
   }
 
   func LaunchApp(
-    startScreen: String? = nil, statusSurface: String? = nil, fixture: String? = nil
+    startScreen: String? = nil,
+    statusSurface: String? = nil,
+    fixture: String? = nil,
+    additionalArguments: [String] = []
   )
     -> XCUIApplication
   {
@@ -51,7 +63,10 @@ class CodexMenuBarUITestCase: XCTestCase {
     if let fixture {
       app.launchArguments += ["--fixture", fixture]
     }
+    app.launchArguments += additionalArguments
     app.launchEnvironment["CODEXMENUBAR_UI_TEST_STATUS_TITLE"] = statusItemTitle
+    app.launchEnvironment["CODEXMENUBAR_UI_TEST_DEFAULTS_SUITE"] =
+      "com.codex.CodexMenuBar.UITests.\(UUID().uuidString)"
     app.launch()
     return app
   }
@@ -214,6 +229,42 @@ class CodexMenuBarUITestCase: XCTestCase {
       RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
     return false
+  }
+
+  func WaitForPowerAssertion(
+    containing expected: String,
+    exists: Bool,
+    timeout: TimeInterval = 10
+  ) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+      let containsExpected = PowerAssertionsOutput().contains(expected)
+      if containsExpected == exists {
+        return true
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    } while Date() < deadline
+
+    return PowerAssertionsOutput().contains(expected) == exists
+  }
+
+  func PowerAssertionsOutput() -> String {
+    let process = Process()
+    let output = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+    process.arguments = ["-g", "assertions"]
+    process.standardOutput = output
+    process.standardError = output
+
+    do {
+      try process.run()
+      process.waitUntilExit()
+    } catch {
+      return "pmset failed: \(error.localizedDescription)"
+    }
+
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    return String(decoding: data, as: UTF8.self)
   }
 
   func WaitForQueryCount(

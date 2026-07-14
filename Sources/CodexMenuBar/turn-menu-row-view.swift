@@ -854,6 +854,7 @@ struct TurnMenuRowView: View {
     case .inProgress: return "Working"
     case .completed: return "Completed"
     case .interrupted: return "Interrupted"
+    case .paused: return "Paused"
     case .failed: return "Failed"
     }
   }
@@ -1134,6 +1135,7 @@ struct TurnMenuRowView: View {
     case .inProgress: return "Working"
     case .completed: return "Done"
     case .interrupted: return "Interrupted"
+    case .paused: return "Paused"
     case .failed: return "Failed"
     }
   }
@@ -1143,6 +1145,7 @@ struct TurnMenuRowView: View {
     case .inProgress: return .green
     case .completed: return Color(nsColor: .systemGray)
     case .interrupted: return .orange
+    case .paused: return .orange
     case .failed: return .red
     }
   }
@@ -1622,6 +1625,7 @@ private struct RunHistoryRowView: View {
     case .inProgress: return "Working"
     case .completed: return "Completed"
     case .interrupted: return "Interrupted"
+    case .paused: return "Paused"
     case .failed: return "Failed"
     }
   }
@@ -1631,6 +1635,7 @@ private struct RunHistoryRowView: View {
     case .inProgress: return .green
     case .completed: return Color(nsColor: .systemGray)
     case .interrupted: return .orange
+    case .paused: return .orange
     case .failed: return .red
     }
   }

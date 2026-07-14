@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private lazy var statusMenu = StatusMenuController(model: model)
   private let appServerClient = AppServerClient()
   private let terminalLauncher = TerminalLauncher()
+  private let sleepPreventionController = AutomaticSleepPreventionController()
   private lazy var statusWindowController = StatusWindowController(
     model: model,
     onOpenTerminal: { [weak self] workingDirectory in
@@ -44,10 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ConfigureMainMenu()
     ConfigureStatusMenu()
     ConfigureClient()
+    ConfigureSleepPrevention()
     if !IsUITestMode() {
       appServerClient.Start()
     }
     ApplyUITestFixtureIfRequested()
+    RefreshSleepPrevention()
     if ShouldLaunchIntoSettings() {
       ShowSettingsWindow()
     }
@@ -56,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     StopTimer()
+    sleepPreventionController.Stop()
     appServerClient.Stop()
   }
 
@@ -275,6 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
       self.model.connectionState = state
       self.settingsModel.connectionState = state
+      self.RefreshSleepPrevention()
       self.model.InvalidateView()
     }
 
@@ -283,6 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return
       }
       self.model.SetEndpointIds(endpointIds)
+      self.RefreshSleepPrevention()
       self.model.InvalidateView()
     }
 
@@ -300,6 +306,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
       self.HandleNotification(method: method, params: params)
     }
+  }
+
+  private func ConfigureSleepPrevention() {
+    settingsModel.SleepPreventionSettingsChanged = { [weak self] in
+      self?.RefreshSleepPrevention()
+    }
+  }
+
+  private func RefreshSleepPrevention() {
+    sleepPreventionController.Update(
+      isEnabled: settingsModel.preventSleepWhileCodexIsActive,
+      keepDisplayAwake: settingsModel.keepDisplayAwakeWhilePreventingSleep,
+      isConnected: model.connectionState == .connected,
+      activeSessionCount: model.authoritativeRunningCount
+    )
+    settingsModel.UpdateSleepPreventionStatus(
+      activeSessionCount: sleepPreventionController.activeSessionCount,
+      isPreventingSleep: sleepPreventionController.isPreventingSleep,
+      mode: sleepPreventionController.activeMode
+    )
   }
 
   private func ShowSettingsWindow() {
@@ -712,8 +738,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         at: startedAt.addingTimeInterval(160 + Double(index))
       )
     }
+    ScheduleActiveUITestFixturePause(
+      endpointId: endpointId,
+      threadId: threadId,
+      turnId: turnId
+    )
     model.SyncSectionDisclosureState()
     model.InvalidateView()
+  }
+
+  private func ScheduleActiveUITestFixturePause(
+    endpointId: String,
+    threadId: String,
+    turnId: String
+  ) {
+    guard
+      let delayValue = ArgumentValue(after: "--pause-active-fixture-after"),
+      let delay = TimeInterval(delayValue),
+      delay > 0
+    else {
+      return
+    }
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+      guard let self else {
+        return
+      }
+
+      self.HandleNotification(
+        method: "turn/completed",
+        params: [
+          "endpointId": endpointId,
+          "threadId": threadId,
+          "turn": [
+            "id": turnId,
+            "status": "paused",
+          ],
+        ]
+      )
+    }
   }
 
   private func ApplyCompletedTurnHistoryUITestFixture() {
@@ -1505,6 +1568,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       break
     }
     turnStore.Tick(now: now)
+    RefreshSleepPrevention()
     if isLiveSurfaceVisible {
       model.SyncSectionDisclosureState()
     }
@@ -1540,6 +1604,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       params: params, endpointId: endpointId, turnId: turnId, turnKey: turnKey)
     let tokenUsageCumulativeBaseline = ParseTokenUsageCumulativeBaseline(
       turn["tokenUsageBaseline"] ?? turn["token_usage_baseline"])
+    let status = TurnExecutionStatus(
+      serverValue: StringValue(turn["status"]) ?? "inProgress")
     turnStore.ClearError(endpointId: endpointId)
     turnStore.UpsertTurnStarted(
       endpointId: endpointId,
@@ -1558,6 +1624,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       turnKey: turnKey,
       payload: turn["tokenUsage"]
     )
+    if status != .inProgress {
+      turnStore.MarkTurnCompleted(
+        endpointId: endpointId,
+        threadId: threadId,
+        turnId: turnId,
+        turnKey: turnKey,
+        status: status,
+        at: Date()
+      )
+    }
   }
 
   private func HandleTurnCompleted(params: [String: Any]) {
@@ -1646,6 +1722,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       turnKey: turnKey,
       payload: params["tokenUsage"]
     )
+    if let statusValue = StringValue(params["status"]) {
+      let status = TurnExecutionStatus(serverValue: statusValue)
+      if status != .inProgress {
+        turnStore.MarkTurnCompletedIfPresent(
+          endpointId: endpointId,
+          threadId: threadId,
+          turnId: turnId,
+          turnKey: turnKey,
+          status: status,
+          at: Date()
+        )
+      }
+    }
   }
 
   private func HandleThreadSnapshot(params: [String: Any]) {

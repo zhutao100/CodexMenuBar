@@ -14,6 +14,7 @@ It connects to a single local `codexd` daemon, and renders authoritative active 
 - Runtime detail controls for five-line folded prompts, current-turn token rounds, completed-turn token usage, long plans, files, commands, and past runs.
 - Settings window for session-only `codexd` socket overrides and reconnects.
 - Launch-at-login control in Settings, backed by `SMAppService.mainApp` for signed app bundles.
+- Optional automatic idle-sleep prevention while connected Codex sessions are actively working.
 - Daemon diagnostics in the popover, including socket path, protocol version, event sequence, and runtime count.
 - One row per active turn.
 - Terminal-style progress semantics:
@@ -83,7 +84,11 @@ Example:
 CODEXD_SOCKET_PATH=/tmp/codexd.sock swift run CodexMenuBar
 ```
 
-The Settings window also includes a launch-at-login toggle and a macOS 26 visibility note: if the status item is hidden, enable `CodexMenuBar` under `System Settings -> Menu Bar`.
+The Settings window also includes:
+
+- A launch-at-login toggle.
+- Sleep-prevention toggles, disabled by default, for keeping the Mac awake while at least one connected Codex session has an in-progress turn and optionally keeping the display awake too. The assertion stops when sessions finish, pause, fail, are interrupted, or the app loses its authoritative `codexd` connection. Manual sleep and lid closure still work.
+- A macOS 26 visibility note: if the status item is hidden, enable `CodexMenuBar` under `System Settings -> Menu Bar`.
 
 When connected, the app subscribes to:
 

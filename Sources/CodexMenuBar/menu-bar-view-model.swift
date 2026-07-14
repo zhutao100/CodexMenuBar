@@ -38,6 +38,13 @@ final class MenuBarViewModel {
     endpointRows.filter { $0.activeTurn != nil }.count
   }
 
+  var authoritativeRunningCount: Int {
+    let activeEndpointIds = Set(turnStore.activeEndpointIds)
+    return endpointRows.filter {
+      activeEndpointIds.contains($0.endpointId) && $0.activeTurn != nil
+    }.count
+  }
+
   var activeRateLimitInfo: RateLimitInfo? {
     endpointRows.first(where: { $0.rateLimits != nil })?.rateLimits
   }

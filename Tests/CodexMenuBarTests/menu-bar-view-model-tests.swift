@@ -4,6 +4,28 @@ import XCTest
 @testable import CodexMenuBar
 
 final class MenuBarViewModelTests: XCTestCase {
+  func testAuthoritativeRunningCountRequiresARegisteredRuntime() {
+    let store = TurnStore()
+    let model = MenuBarViewModel(turnStore: store)
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    store.UpsertTurnStarted(
+      endpointId: "ep-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      at: start
+    )
+
+    XCTAssertEqual(model.runningCount, 1)
+    XCTAssertEqual(model.authoritativeRunningCount, 0)
+
+    model.SetEndpointIds(["ep-1"])
+    XCTAssertEqual(model.authoritativeRunningCount, 1)
+
+    model.SetEndpointIds([])
+    XCTAssertEqual(model.authoritativeRunningCount, 0)
+  }
+
   func testCommandsSectionAutoExpandsForRunningAndFailedCommands() {
     let store = TurnStore()
     let model = MenuBarViewModel(turnStore: store)

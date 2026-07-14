@@ -5,6 +5,7 @@ enum TurnExecutionStatus: Equatable {
   case inProgress
   case completed
   case interrupted
+  case paused
   case failed
 
   init(serverValue: String) {
@@ -13,6 +14,8 @@ enum TurnExecutionStatus: Equatable {
       self = .completed
     case "interrupted":
       self = .interrupted
+    case "paused":
+      self = .paused
     case "failed":
       self = .failed
     default:
